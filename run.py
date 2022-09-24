@@ -1,32 +1,23 @@
 from utils import *
+from itertools import product
+from pathlib import Path
 
-batch_sizes = [8, 16, 24, 32]
+hyper_parameters_dict = {
+"grid_sizes" : [33, 65, 129],
+"batch_sizes" : [8, 16, 24],
+"mode" : ['F'],
+"net" : ['UNet'],
+"features" : [16, 32],
+"four" : [False,],
+"title" : ['neu'],
+"label":['energy']
+}
 
-# unetF_2nd_65_16_bs_cases = [gen_hyper_dict(65, bs, 2, 'F', 'UNet', 16) for bs in batch_sizes]
-# unetM_2nd_65_16_bs_cases = [gen_hyper_dict(65, bs, 2, 'M', 'UNet', 16) for bs in batch_sizes]
+log_dir = './lightning_logs/'
 
-# bcunetF_2nd_65_16_bs_cases = [gen_hyper_dict(65, bs, 2, 'F', 'UNet', 16, bc = True) for bs in batch_sizes]
-# bcunetM_2nd_65_16_bs_cases = [gen_hyper_dict(65, bs, 2, 'M', 'UNet', 16, bc = True) for bs in batch_sizes]
-
-# unetF_2nd_65_32_bs_cases = [gen_hyper_dict(65, bs, 2, 'F', 'UNet', 32) for bs in batch_sizes]
-# unetM_2nd_65_32_bs_cases = [gen_hyper_dict(65, bs, 2, 'M', 'UNet', 32) for bs in batch_sizes]
-
-attunetF_2nd_65_16_bs_cases = [gen_hyper_dict(65, bs, 2, 'F', 'AttUNet', 16) for bs in batch_sizes]
-attunetM_2nd_65_16_bs_cases = [gen_hyper_dict(65, bs, 2, 'M', 'AttUNet', 16) for bs in batch_sizes]
-
-# attunetF_2nd_65_32_bs_cases = [gen_hyper_dict(65, bs, 2, 'F', 'AttUNet', 32) for bs in batch_sizes]
-# attunetM_2nd_65_32_bs_cases = [gen_hyper_dict(65, bs, 2, 'M', 'AttUNet', 32) for bs in batch_sizes]
-
-if __name__ == '__main__':
-    for case in attunetM_2nd_65_16_bs_cases:
+for parameter in product(*hyper_parameters_dict.values()):
+    case = gen_hyper_dict(*parameter,)
+    path = Path(f"{log_dir}{case['name']}")
+    if not path.exists():
+        print(f"\nExperiment Name: {case['name']}\n")
         main(case)
-
-    for case in attunetF_2nd_65_16_bs_cases:
-        main(case)
-
-
-    # for case in bcunetM_2nd_65_16_bs_cases:
-    #     main(case)
-
-    # for case in bcunetF_2nd_65_16_bs_cases:
-    #     main(case)

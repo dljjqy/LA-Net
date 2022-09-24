@@ -24,17 +24,13 @@ class MyDataset(Dataset):
 
 class MyDataModule(pl.LightningDataModule):
     
-    def __init__(self, data_path, batch_size, order=2, mode='F'):
+    def __init__(self, data_path, batch_size, mode='F'):
         super().__init__()
         self.trainF = data_path + mode + '.npy'
         self.valF = data_path + 'Val' + mode + '.npy'
 
-        if order == 2:
-            self.trainB = data_path + 'B2nd.npy'
-            self.valB = data_path + 'ValB2nd.npy'
-        elif order == 4:
-            self.trainB = data_path + 'B4th.npy'
-            self.valB = data_path + 'ValB4th.npy'
+        self.trainB = data_path + 'B.npy'
+        self.valB = data_path + 'ValB.npy'
         self.batch_size = batch_size
 
     def setup(self, stage):    
