@@ -1,3 +1,4 @@
+from turtle import forward
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -105,7 +106,7 @@ class AttUNet(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self, in_c=3, out_c=1, features=16, label=None):
+    def __init__(self, in_c=3, out_c=1, features=16, label=''):
         '''
         mode1 ---> F1, mode2 ---> F2
         '''
@@ -150,13 +151,55 @@ class UNet(nn.Module):
         y = self.final(y)
         return y
 
+
+class myUNet(nn.Module):
+    def __init__(self, in_c=3, out_c=1, features=16, layers=[1, 2, 4, 8, 16, 32], label=''):
+        super().__init__()
+        self.features = features
+        self.layers = layers
+        self.maxpool = nn.MaxPool2d((2, 2), (2, 2))
+        
+        if label == '':            
+            self.final = nn.Conv2d(features, out_c, 3, 1, padding='valid')
+        elif label == 'neu':
+            self.final = nn.Conv2d(features, out_c, 3, 1, padding='same')
+        elif label == 'bc':
+            self.final = nn.Conv2d(features, out_c, 3, 1, padding='same')
+        
+        self.dconvs = [DoubleConv(in_c, features)]
+        self.ups = []
+        self.uconvs = []
+        for i in range(1, len(layers)):
+            self.dconvs.append(DoubleConv(layers[i-1] * features, layers[i] * features))
+            self.uconvs.append(DoubleConv(layers[i] * features, layers[i-1] * features))
+            self.ups.append(nn.ConvTranspose2d(layers[i] * features, layers[i-1] * features, (2, 2), (2, 2)))
+        self.ups[0] = nn.ConvTranspose2d(features * layers[1],  features * layers[0], (3, 3), (2, 2))
+        self.uconvs = self.uconvs[::-1]
+        self.ups = self.ups[::-1]
+
+    def forward(self, x):
+        xs = [self.dconvs[0](x)]
+        for i in range(1, len(self.layers)):
+            xs.append(self.dconvs[i](self.maxpool(xs[i-1])))
+
+        # for x in xs:    print(x.shape)
+
+        y = self.uconvs[0](torch.cat([self.ups[0](xs[-1]), xs[-2]], 1))
+        for i in range(1, len(self.ups)):
+            y = self.ups[i](y)
+            y = self.uconvs[i](torch.cat([y, xs[-i-2]], 1))
+
+        y = self.final(y)
+        return y
+        
 # Do not delete it
 model_names = {'UNet': UNet, 'AttUNet': AttUNet}
 
 if __name__ == '__main__':
-    x = torch.rand(4, 3, 33, 33)
-    net1 = UNet(3, 1, 2)
+    x = torch.rand(4, 3, 65, 65)
+    net1 = myUNet(3, 1, 1)
     # net2 = AttUNet(3, 1, 2)
 
     print(net1(x).shape)
+    # print(net1.dconvs)
     # print(net2(x).shape)
