@@ -354,6 +354,153 @@ def apply_diri_bc(b, bcs={'top': 0, 'bottom': 0}):
                 b[idx] = g
     return b
 
+def fv_mesh(a, N):
+    h = 2*a / N
+    left, bottom = -a + h/2, -a + h/2
+    right, top = a - h/2, a - h/2
+    
+    x = np.linspace(left, right, N)
+    y = np.linspace(bottom, top, N)
+    return np.meshgrid(x, y)
+
+def fv_b_func(a, N, f):
+    h = 2*a / N
+    xx, yy = fv_mesh(a, N)
+    f_mat = f(xx, yy).flatten()
+    return f_mat * h * h
+
+def fv_b_point(N):
+    b = np.zeros(N*N)
+    idx = N//2 + N * (N//2)
+    b[idx] = 1
+    return b
+
+def fv_A_dirichlet(n):
+    n2 = n**2
+    A = sparse.lil_matrix((n2, n2))
+    # Interior points
+    for i in range(1, n-1):
+        for j in range(1, n-1):
+            idx = i * n + j
+            A[idx, idx] = -4
+            A[idx, idx+1] = A[idx, idx-1] = A[idx, idx-n] = A[idx, idx+n] = 1
+    
+    # Boundary points
+    for i in range(1, n-1):
+        # Top
+        idx = i
+        A[idx, idx] = -6
+        A[idx, idx+1] = A[idx, idx-1] = 1
+        A[idx, idx+n] = 4/3
+        
+        # Bottom
+        idx = (n-1) * n + i
+        A[idx, idx] = -6
+        A[idx, idx+1] = A[idx, idx-1] = 1
+        A[idx, idx-n] = 4/3
+        
+        # Left
+        idx = i * n
+        A[idx, idx] = -6
+        A[idx, idx+n] = A[idx, idx-n] = 1
+        A[idx, idx+1] = 4/3
+        
+        # Right
+        idx = i * n + n - 1
+        A[idx, idx] = -6
+        A[idx, idx+n] = A[idx, idx-n] = 1
+        A[idx, idx-1] = 4/3
+        
+    # Four corners
+    # Left top
+    idx = 0
+    A[idx, idx] = -8
+    A[idx, idx+1] = A[idx, idx+n] = 4/3
+    # Right Top
+    idx = n-1
+    A[idx, idx] = -8
+    A[idx, idx-1] = A[idx, idx+n] = 4/3
+    # Left Bottom
+    idx = (n-1) * n
+    A[idx, idx] = -8
+    A[idx, idx+1] = A[idx, idx-n] = 4/3
+    # Right Bottom
+    idx = n2 - 1
+    A[idx, idx] = -8
+    A[idx, idx-1] = A[idx, idx-n] = 4/3
+    
+    A = A.tocoo()
+    return A
+
+
+def fv_A_neu(n):
+    '''
+    Left and Right are neumann, top and down are dirichlet
+    '''
+    n2 = n**2
+    A = sparse.lil_matrix((n2, n2))
+    # Interior points
+    for i in range(1, n-1):
+        for j in range(1, n-1):
+            idx = i * n + j
+            A[idx, idx] = -4
+            A[idx, idx+1] = A[idx, idx-1] = A[idx, idx-n] = A[idx, idx+n] = 1
+    
+    # Boundary points
+    for i in range(1, n-1):
+        # Top
+        idx = i
+        A[idx, idx] = -6
+        A[idx, idx+1] = A[idx, idx-1] = 1
+        A[idx, idx+n] = 4/3
+        
+        # Bottom
+        idx = (n-1) * n + i
+        A[idx, idx] = -6
+        A[idx, idx+1] = A[idx, idx-1] = 1
+        A[idx, idx-n] = 4/3
+        
+        # Left
+        idx = i * n
+        A[idx, idx] = -3
+        A[idx, idx+n] = A[idx, idx-n] = A[idx, idx+1] = 1
+        
+        # Right
+        idx = i * n + n - 1
+        A[idx, idx] = -3
+        A[idx, idx+n] = A[idx, idx-n] = A[idx, idx-1] = 1
+        
+    # Four corners
+    
+    # Left top
+    idx = 0
+    A[idx, idx] = -5
+    A[idx, idx+n] = 4/3
+    A[idx, idx+1] = 1
+    
+    # Right Top
+    idx = n-1
+    A[idx, idx] = -5
+    A[idx, idx+n] = 4/3
+    A[idx, idx-1] = 1
+    
+    # Left Bottom
+    idx = (n-1) * n
+    A[idx, idx] = -5
+    A[idx, idx-n] = 4/3
+    A[idx, idx+1] = 1
+    
+    # Right Bottom
+    idx = n2 - 1
+    A[idx, idx] = -5
+    A[idx, idx-n] = 4/3
+    A[idx, idx-1] = 1
+    
+    A = A.tocoo()
+    return A
+        
+
+
 def gen_hyper_dict(gridSize, batch_size, mode, net, features, four, title='',
                     label='jac', lr=1e-3, max_epochs=80, ckpt=False, lbfgs=False, big=False):
 
