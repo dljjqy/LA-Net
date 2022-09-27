@@ -107,6 +107,11 @@ def neu_rhs(x, f, h, g_n=0, g_d=0):
 
 class pl_Model(pl.LightningModule):
     def __init__(self, loss, net, data_path='./data/', lr=1e-3, label='jac'):
+        '''
+        All right side computation:
+            dir --> output N-2 x N-2 --> pad G ---> get all loss value.
+            mixed --> output N-1 x N --> pad N and G ---> get all loss value.
+        '''
         super().__init__()
         self.loss = loss
         self.net = net
@@ -124,42 +129,30 @@ class pl_Model(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x, b = batch
         y = self(x)
-        y = y.flatten(1, 3)
         with torch.no_grad():
             rhs = self.rhs(y, b)
-            # energy_loss = energy(y, self.A, b)
-            mse_linalg_loss = mse_loss(y, self.A, b)
-            jacobian_loss = self.loss(y, rhs)
-        energy_loss = energy(y, self.A, b)
-        
-        self.log_dict({
-            'Jacobian Iteration l1 Loss': jacobian_loss,
-            'Mean Energy Loss':energy_loss,
-            'MSE Linalg Loss':mse_linalg_loss
-        })
-        return {'loss' : energy_loss}
+        loss_values = {
+        'mse' : mse_loss(y, self.A, b),
+        'jac' : self.loss(y, rhs),
+        'energy' : energy(y, self.A, b)}
+
+        self.log_dict(loss_values)
+        return {'loss' : loss_values[self.label]}
 
     def validation_step(self, batch, batch_idx):
         x, b = batch
         y = self(x)
-        y = torch.flatten(y, 1, 3)
+        with torch.no_grad():
+            rhs = self.rhs(y, b)
+        loss_values = {
+            'val_mse' : mse_loss(y, self.A, b),
+            'val_jac' : self.loss(y, rhs),
+            'val_energy' : energy(y, self.A, b)}
 
-        rhs = self.rhs(y, b)
-        energy_loss = energy(y, self.A, b)
-        mse_linalg_loss = mse_loss(y, self.A, b)
-        jacobian_loss = self.loss(y, rhs)
-
-        self.log_dict({
-            'Val Jacobian Iteration l1 Loss': jacobian_loss,
-            'Val Mean Energy Loss':energy_loss,
-            'Val MSE Linalg Loss':mse_linalg_loss
-        })
-        return {
-            'Val Jacobian Iteration l1 Loss': jacobian_loss,
-            'Val Mean Energy Loss':energy_loss,
-            'Val MSE Linalg Loss':mse_linalg_loss}
+        self.log_dict(loss_values)
+        return loss_values
     
-    def rhs(self, y, b):
+    def rhs_jac(self, y, b):
         Mx = matrix_batched_vectors_multiply(self.M, y)
         x_new = matrix_batched_vectors_multiply(self.invM, (b-Mx))
         return x_new
@@ -178,7 +171,6 @@ class pl_Model(pl.LightningModule):
 
         alpha = r1r1/batched_vec_inner(p, matrix_batched_vectors_multiply(self.A, p))
         return y + alpha * p
-
 
     def test_step(self, batch, batch_idx):
         pass
