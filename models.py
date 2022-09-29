@@ -18,6 +18,7 @@ class DoubleConv(nn.Module):
         return self.net(x)
 
 class Attention_block(nn.Module):
+    
     def __init__(self, F_g, F_l, F_init):
         super(Attention_block, self).__init__()
         self.w_g = nn.Sequential(

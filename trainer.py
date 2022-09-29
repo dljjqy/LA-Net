@@ -53,13 +53,13 @@ def conv_rhs(x):
 
 
 def gradient_descent(x, A, b):
-    r = matrix_batched_vectors_multiply(A, x) - b
-    Ar = matrix_batched_vectors_multiply(A, r)
-    alpha = batched_vec_inner(r, r)/batched_vec_inner(r, Ar)
+    r = mmbv(A, x) - b
+    Ar = mmbv(A, r)
+    alpha = bvi(r, r)/bvi(r, Ar)
     y = x + alpha * r
     return y
 
-def matrix_batched_vectors_multiply(A, y):
+def mmbv(A, y):
     """
     Sparse matrix multiply Batched vectors
     """
@@ -68,7 +68,7 @@ def matrix_batched_vectors_multiply(A, y):
     v = torch.transpose(v, 0, 1)
     return v
 
-def batched_vec_inner(x, y):
+def bvi(x, y):
     """
     inner product of Batched vectors x and y
     """
@@ -76,13 +76,13 @@ def batched_vec_inner(x, y):
     return torch.bmm(x.view((b, 1, n)), y.view((b, n, 1))) 
 
 def energy(x, A, b):
-    Ax = matrix_batched_vectors_multiply(A, x)
-    bx = batched_vec_inner(b, x)
-    xAx = batched_vec_inner(x, Ax)
+    Ax = mmbv(A, x)
+    bx = bvi(b, x)
+    xAx = bvi(x, Ax)
     return (xAx/2 - bx).mean()
 
 def mse_loss(x, A, b):
-    Ax = matrix_batched_vectors_multiply(A, x)
+    Ax = mmbv(A, x)
     return F.mse_loss(Ax, b)
 
 def diri_rhs(x, f, h, g=0):
@@ -153,25 +153,25 @@ class pl_Model(pl.LightningModule):
         return loss_values
     
     def rhs_jac(self, y, b):
-        Mx = matrix_batched_vectors_multiply(self.M, y)
-        x_new = matrix_batched_vectors_multiply(self.invM, (b-Mx))
+        Mx = mmbv(self.M, y)
+        x_new = mmbv(self.invM, (b-Mx))
         return x_new
 
-    def rhs_cg(self, y, b):
-        r = b - matrix_batched_vectors_multiply(self.A, y)
-
-        rr = batched_vec_inner(r, r)
-        Ar = matrix_batched_vectors_multiply(self.A, r)
-        alpha = rr / batched_vec_inner(r, Ar)
+    def rhs_cg(self, x, b, max_iters):
+        r = b - mmbv(self.A, x)
+        p = r
+        for k in max_iters:
+            rr = bvi(r, r)
+            Ap = mmbv(self.A, p)
+            alpha = rr / bvi(p, Ap)
+            x = x + alpha * p
+            r1 = r - alpha * Ap
+            beta = bvi(r1, r1) / rr
+            p = r1 + beta * p
+            r = r1
+        return x
         
-        r1 = r - alpha * Ar
-        r1r1 = batched_vec_inner(r1, r1)
-        beta = r1r1/rr
-        p = r1 + beta * r
-
-        alpha = r1r1/batched_vec_inner(p, matrix_batched_vectors_multiply(self.A, p))
-        return y + alpha * p
-
+                
     def test_step(self, batch, batch_idx):
         pass
     
