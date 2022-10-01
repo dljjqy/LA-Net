@@ -47,7 +47,7 @@ class Attention_block(nn.Module):
         return out
 
 class AttUNet(nn.Module):
-    def __init__(self, in_c=3, out_c=1, features=16, label = ''):
+    def __init__(self, in_c=3, out_c=1, features=16, boundary_type = ''):
         super().__init__()
         self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.dconv0 = DoubleConv(in_c, features)
@@ -61,12 +61,10 @@ class AttUNet(nn.Module):
         self.uconv2 = DoubleConv(features * 4, features * 2)
         self.uconv1 = DoubleConv(features * 2, features)
 
-        if label == '':            
+        if boundary_type == 'D':            
             self.final = nn.Conv2d(features, out_c, 3, 1, padding='valid')
-        elif label == 'neu':
+        elif boundary_type == 'N':
             self.final = nn.Conv2d(features, out_c, 3, 1, padding=(0, 1))
-        elif label == 'bc':
-            self.final = nn.Conv2d(features, out_c, 3, 1, padding='same')
 
         self.up4 = nn.ConvTranspose2d(features * 16, features * 8, (2, 2), (2, 2))
         self.up3 = nn.ConvTranspose2d(features * 8,  features * 4, (2, 2), (2, 2))
@@ -107,7 +105,7 @@ class AttUNet(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self, in_c=3, out_c=1, features=16, label=''):
+    def __init__(self, in_c=3, out_c=1, features=16, boundary_type='D'):
         '''
         mode1 ---> F1, mode2 ---> F2
         '''
@@ -130,13 +128,11 @@ class UNet(nn.Module):
         self.uconv1 = DoubleConv(features * 4, features * 2)
         self.uconv0 = DoubleConv(features * 2, features * 1)
 
-        if label == '':            
+        if boundary_type == 'D':            
             self.final = nn.Conv2d(features, out_c, 3, 1, padding='valid')
-        elif label == 'neu':
-            self.final = nn.Conv2d(features, out_c, 3, 1, padding='same')
-        elif label == 'bc':
-            self.final = nn.Conv2d(features, out_c, 3, 1, padding='same')
-            
+        elif boundary_type == 'N':
+            self.final = nn.Conv2d(features, out_c, 3, 1, padding=(0, 1))
+
 
     def forward(self , x):
         x0 = self.dconv0(x)
@@ -154,18 +150,16 @@ class UNet(nn.Module):
 
 
 class myUNet(nn.Module):
-    def __init__(self, in_c=3, out_c=1, features=16, layers=[1, 2, 4, 8, 16, 32], label=''):
+    def __init__(self, in_c=3, out_c=1, features=16, layers=[1, 2, 4, 8, 16, 32], boundary_type='D'):
         super().__init__()
         self.features = features
         self.layers = layers
         self.maxpool = nn.MaxPool2d((2, 2), (2, 2))
         
-        if label == '':            
+        if boundary_type == 'D':            
             self.final = nn.Conv2d(features, out_c, 3, 1, padding='valid')
-        elif label == 'neu':
-            self.final = nn.Conv2d(features, out_c, 3, 1, padding='same')
-        elif label == 'bc':
-            self.final = nn.Conv2d(features, out_c, 3, 1, padding='same')
+        elif boundary_type == 'N':
+            self.final = nn.Conv2d(features, out_c, 3, 1, padding=(0, 1))
         
         self.dconvs = [DoubleConv(in_c, features)]
         self.ups = []

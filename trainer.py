@@ -13,19 +13,20 @@ def coo2tensor(A):
     shape = A.shape
     return torch.sparse.FloatTensor(i, v, torch.Size(shape)).to(torch.float32)
 
-def np2torch(A_path, label='jac'):
+def np2torch(data_path, backward_type='jac', boundary_type='D'):
     '''
-    Label: To identify which iterative method to use.
+    backward_type: To identify which iterative method to use.
         Jacobian, Gauess Seidel, CG.
     '''
+    A_path = f'{data_path}{boundary_type}.npz'
     A = sparse.load_npz(A_path)
     D = sparse.diags(A.diagonal())
     L = sparse.tril(A, -1)
     U = sparse.triu(A, 1)
-    if label == 'jac' or 'mse':
+    if backward_type == 'jac' or 'mse':
         invM = sparse.linalg.inv(D.tocsc())
         M = L + U
-    elif label == 'gauess':
+    elif backward_type == 'gauess':
         invM = sparse.linalg.inv((L+D).tocsc())
         M = U     
     return coo2tensor(A), coo2tensor(invM.tocoo()), coo2tensor(M.tocoo())
@@ -33,7 +34,8 @@ def np2torch(A_path, label='jac'):
 def pad_neu_bc(x, h, pad=(1, 1, 0, 0), g = 0):
     val = 2 * h * g
     x = F.pad(x, pad=pad, mode='reflect')
-    
+    if val == 0:
+        return x
     if pad == (1, 1, 0, 0):
         x[..., :, 0] -= val
         x[..., :,-1] -= val
@@ -50,7 +52,6 @@ def conv_rhs(x):
     kernel = torch.tensor([[[[0, -0.25, 0], [-0.25, 0, -0.25], [0, -0.25, 0]]]])
     kernel = kernel.type_as(x)
     return F.conv2d(x, kernel)
-
 
 def gradient_descent(x, A, b):
     r = mmbv(A, x) - b
@@ -105,20 +106,20 @@ def neu_rhs(x, f, h, g_n=0, g_d=0):
     rhs = conv_rhs(x)
     return rhs + h*h*f[...,1:-1, 1:-1]
 
-class pl_Model(pl.LightningModule):
-    def __init__(self, loss, net, data_path='./data/', lr=1e-3, label='jac'):
+class LAModel(pl.LightningModule):
+    def __init__(self, net, data_path='./data/', lr=1e-3, backward_type='jac', boundary_type='D'):
         '''
-        All right side computation:
+            All right side computation:
             dir --> output N-2 x N-2 --> pad G ---> get all loss value.
-            mixed --> output N-1 x N --> pad N and G ---> get all loss value.
+            mixed --> output N-2 x N --> pad ghost points and G ---> get all conv type loss value.
+            mixed --> output N-2 x N --> pad G ---> get linear type loss.
         '''
         super().__init__()
-        self.loss = loss
         self.net = net
         self.lr = lr
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.A, self.invM, self.M = np2torch(data_path+'A.npz', label)
+        self.A, self.invM, self.M = np2torch(data_path, backward_type, boundary_type)
         self.invM = self.invM.to(device)
         self.M = self.M.to(device)
         self.A = self.A.to(device)
@@ -133,11 +134,11 @@ class pl_Model(pl.LightningModule):
             rhs = self.rhs(y, b)
         loss_values = {
         'mse' : mse_loss(y, self.A, b),
-        'jac' : self.loss(y, rhs),
+        'jac' : F.l1_loss(y, rhs),
         'energy' : energy(y, self.A, b)}
 
         self.log_dict(loss_values)
-        return {'loss' : loss_values[self.label]}
+        return {'loss' : loss_values[self.backward_type]}
 
     def validation_step(self, batch, batch_idx):
         x, b = batch
@@ -146,7 +147,7 @@ class pl_Model(pl.LightningModule):
             rhs = self.rhs(y, b)
         loss_values = {
             'val_mse' : mse_loss(y, self.A, b),
-            'val_jac' : self.loss(y, rhs),
+            'val_jac' : F.l1_loss(y, rhs),
             'val_energy' : energy(y, self.A, b)}
 
         self.log_dict(loss_values)
@@ -160,7 +161,7 @@ class pl_Model(pl.LightningModule):
     def rhs_cg(self, x, b, max_iters):
         r = b - mmbv(self.A, x)
         p = r
-        for k in max_iters:
+        for _ in max_iters:
             rr = bvi(r, r)
             Ap = mmbv(self.A, p)
             alpha = rr / bvi(p, Ap)
@@ -181,40 +182,40 @@ class pl_Model(pl.LightningModule):
         return [optimizer], [lr_scheduler]
 
 
-class pl_lbfgs_Model(pl_Model):
-    def __init__(self, *args, **kwargs):
-        super(pl_lbfgs_Model, self).__init__(*args, **kwargs)
-        self.automatic_optimization = False
+# class pl_lbfgs_Model(pl_Model):
+#     def __init__(self, *args, **kwargs):
+#         super(pl_lbfgs_Model, self).__init__(*args, **kwargs)
+#         self.automatic_optimization = False
     
-    def training_step(self, batch, batch_idx):
-        x, b = batch
-        opt = self.optimizers()
-        def closure():
-            if torch.is_grad_enabled():
-                opt.zero_grad()
-            y = self(x).flatten(1, 3)
-            with torch.no_grad():
-                rhs = self.rhs(y, b)
-            loss = self.loss(y, rhs)
-            if loss.requires_grad:
-                self.manual_backward(loss)
-            return loss
-        opt.step(closure)
+#     def training_step(self, batch, batch_idx):
+#         x, b = batch
+#         opt = self.optimizers()
+#         def closure():
+#             if torch.is_grad_enabled():
+#                 opt.zero_grad()
+#             y = self(x).flatten(1, 3)
+#             with torch.no_grad():
+#                 rhs = self.rhs(y, b)
+#             loss = self.loss(y, rhs)
+#             if loss.requires_grad:
+#                 self.manual_backward(loss)
+#             return loss
+#         opt.step(closure)
 
-        y = self(x).flatten(1, 3)
-        with torch.no_grad():
-            rhs = self.rhs(y, b)
-            energy_loss = energy(y, self.A, b)
-            mse_linalg_loss = mse_loss(y, self.A, b)
-        jacobian_loss = self.loss(y, rhs)
+#         y = self(x).flatten(1, 3)
+#         with torch.no_grad():
+#             rhs = self.rhs(y, b)
+#             energy_loss = energy(y, self.A, b)
+#             mse_linalg_loss = mse_loss(y, self.A, b)
+#         jacobian_loss = self.loss(y, rhs)
 
-        self.log_dict({
-            'Jacobian Iteration l1 Loss': jacobian_loss,
-            'Mean Energy Loss':energy_loss,
-            'MSE Linalg Loss':mse_linalg_loss
-        })
+#         self.log_dict({
+#             'Jacobian Iteration l1 Loss': jacobian_loss,
+#             'Mean Energy Loss':energy_loss,
+#             'MSE Linalg Loss':mse_linalg_loss
+#         })
 
-    def configure_optimizers(self):
-        optimizer = LBFGSNew(self.parameters(), 
-            history_size=7, max_iter=2, line_search_fn=True, batch_mode=True)
-        return [optimizer]
+#     def configure_optimizers(self):
+#         optimizer = LBFGSNew(self.parameters(), 
+#             history_size=7, max_iter=2, line_search_fn=True, batch_mode=True)
+#         return [optimizer]

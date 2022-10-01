@@ -26,8 +26,8 @@ class MyDataModule(pl.LightningDataModule):
     
     def __init__(self, data_path, batch_size, mode='F'):
         super().__init__()
-        self.trainF = data_path + mode + '.npy'
-        self.valF = data_path + 'Val' + mode + '.npy'
+        self.trainF = f'{data_path}{mode}.npy'
+        self.valF = f'{data_path}Val{mode}.npy'
 
         self.trainB = data_path + 'B.npy'
         self.valB = data_path + 'ValB.npy'

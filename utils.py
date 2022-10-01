@@ -9,7 +9,7 @@ from scipy.stats import multivariate_normal
 from pytorch_lightning.loggers import TensorBoardLogger
 from datasets import MyDataModule
 from models import model_names
-from trainer import pl_Model, pl_lbfgs_Model
+from trainer import pl_Model
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pathlib import Path
 from random import uniform
@@ -432,7 +432,6 @@ def fv_A_dirichlet(n):
     A = A.tocoo()
     return A
 
-
 def fv_A_neu(n):
     '''
     Left and Right are neumann, top and down are dirichlet
@@ -499,52 +498,39 @@ def fv_A_neu(n):
     A = A.tocoo()
     return A
         
-
-
-def gen_hyper_dict(gridSize, batch_size, mode, net, features, four, title='',
-                    label='jac', lr=1e-3, max_epochs=80, ckpt=False, lbfgs=False, big=False):
-
-    exp_name = f'{mode:s}_{gridSize}_{net}_{features}_bs{batch_size}_{label}_lr{lr:.0e}'
-    data_name = f'normal{gridSize}'
-    
-    if title == '':
-        pass
-    elif title == 'bc':
-        exp_name += '_bc'
-        data_name += '_bc'
-    elif title == 'neu':
-        exp_name = f'neu_{exp_name}'
-        data_name = f'neu_{data_name}'
-
-    if big:
-        exp_name = f'big_{exp_name}'
-        data_name = f'big_{data_name}'
-
-    if four:
-        exp_name = f'4{exp_name}'
-        data_name = f'4{data_name}'
+def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type,
+                    input_type='F', backward_type='jac', lr=1e-3, max_epochs=100, ckpt=False):
+    '''
+    gridSize: How big mesh. 33, 65, 129
+    batch_size: batch size. 8, 16, 24, 32
+    input_type: F type or M type.
+    net: The architecture.UNet or Attention UNet.
+    features: To control the parameters size of network. [16, 32]
+    data_type: One or four point source, Big or small area. [bigOne, bigFour, One, Four]
+    boundary_type: Dirichlet or mixed with neumann.[D, N]
+    backward_type: The loss function used to train the network.
+    lr:learning rate
+    max_epochs: epochs
+    ckpt: True for load parameters from ckpt
+    '''
+    exp_name = f'{backward_type}_{input_type:s}_{gridSize}_{net}_{features}_bs{batch_size}_{data_type}{boundary_type}'
+    data_name = f'{data_type}{gridSize}'
 
     data_path = f'./data/{data_name}/'
-    in_c = 3 if mode == 'F' else 2
+    in_c = 3 if input_type == 'F' else 2
 
-    model = model_names[net](in_c, 1, features, title)
-    if lbfgs:
-        exp_name = 'lbfgs_' + exp_name
+    model = model_names[net](in_c, 1, features, boundary_type)
     if ckpt:
         exp_name = 'resume_' + exp_name
 
     dc = {'max_epochs': max_epochs, 'precision': 32,
           'check_val_every_n_epoch': 1, 'ckpt_path': ckpt, 'mode': 'fit', 'gpus': 1}
-    dc['pl_dataModule'] = MyDataModule(data_path, batch_size, mode)
-    dc['check_point'] = ModelCheckpoint(monitor='Val Jacobian Iteration l1 Loss', mode='min', every_n_train_steps=0,
+    dc['pl_dataModule'] = MyDataModule(data_path, batch_size, input_type)
+    dc['check_point'] = ModelCheckpoint(monitor='val_mse', mode='min', every_n_train_steps=0,
                                         every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
     dc['logger'] = TensorBoardLogger('./lightning_logs/', exp_name)
     dc['name'] = exp_name
-
-    if lbfgs:
-        dc['pl_model'] = pl_lbfgs_Model(F.l1_loss, model, data_path, lr, label)
-    else:
-        dc['pl_model'] = pl_Model(F.l1_loss, model, data_path, lr, label)
+    dc['pl_model'] = pl_Model(model, data_path, lr, backward_type, boundary_type)
     
     if ckpt:
         parameters = torch.load(ckpt)
@@ -591,8 +577,8 @@ def main(kwargs):
     torch.cuda.empty_cache()
     return True
 
-def generate_data(f, a=1, label='bc', path='./data/', minQ=1, maxQ=2, n=130, train_N=2500, val_N=25, ax=0):
-    p = Path(path)
+def generate_data(func, dir, a=1, minQ=1, maxQ=2, n=130, train_N=2500, val_N=10, ax=0):
+    p = Path(dir)
     if not p.is_dir():
         p.mkdir(exist_ok=False)
 
@@ -601,62 +587,39 @@ def generate_data(f, a=1, label='bc', path='./data/', minQ=1, maxQ=2, n=130, tra
     y = np.linspace(-a, a, n)
     xx, yy = np.meshgrid(x, y)
 
-    mask = np.ones_like(xx)
-    mask[1:-1, 1:-1] *= 0
+    f = func(xx, yy, h)
 
     seed(1)
     train_Qs = [uniform(minQ, maxQ) for _ in range(train_N)]
     val_Qs = np.linspace(minQ, maxQ, val_N)
 
-    if 'normal' in f.__name__:
-        f1_mat = f(xx, yy, h)
-        if 'fourth' in f.__name__:
-            f1_mat = f(xx, yy, h, a)
-    else:
-        f1_mat = f(xx, yy)
 
     F = np.array(
-        list(np.stack([xx, yy, q * f1_mat], axis=ax) for q in train_Qs))
-    np.save(path+'F.npy', F)
+        list(np.stack([xx, yy, q * f], axis=ax) for q in train_Qs))
+    np.save(dir+'F.npy', F)
     del F
 
     ValF = np.array(
-        list(np.stack([xx, yy, q * f1_mat], axis=ax) for q in val_Qs))
-    np.save(path+'ValF.npy', ValF)
+        list(np.stack([xx, yy, q * f], axis=ax) for q in val_Qs))
+    np.save(dir+'ValF.npy', ValF)
     del ValF
 
-    M = np.array(list(np.stack([mask, q * f1_mat], axis=ax) for q in train_Qs))
-    np.save(path+'M.npy', M)
-    del M
+    Ad = fd_A_with_bc(n)
+    sparse.save_npz(dir+'AD', Ad)
+    del Ad
 
-    ValM = np.array(
-        list(np.stack([mask, q * f1_mat], axis=ax) for q in val_Qs))
-    np.save(path+'ValM.npy', ValM)
-    del ValM
+    An = fd_A_neu(n)
+    sparse.save_npz(dir+'AN', An)
+    del An
 
-    if label == 'bc':
-        A = fd_A_with_bc(n)
-        b = fd_b_bc(f1_mat, h)
-
-    if label == '':
-        A = fd_A(n)
-        b = fd_b(f1_mat, h)
-    
-    if label == 'neu':
-        A = fd_A_neu(n)
-        b = fd_b_bc(f1_mat, h)
-
-    # D = ((A - sparse.diags(A.diagonal())) / 4).tocoo()
-    sparse.save_npz(path+'A', A)
-    # sparse.save_npz(path+'D', D)
-    del A
-
+    b = fd_b_bc(f, h)
+    # As we consider homogeneous boundary type.
     B = np.array(list(b * q for q in train_Qs))
-    np.save(path+'B.npy', np.array(B))
+    np.save(dir+'B.npy', np.array(B))
     del B
     
     valB = np.array(list(b * q for q in val_Qs))
-    np.save(path+'ValB.npy', np.array(valB))
+    np.save(dir+'ValB.npy', np.array(valB))
     del valB
 
     return True
@@ -684,6 +647,5 @@ if __name__ == '__main__':
     # yitas = [yita11_2d, yita12_2d, yita22_2d, yita23_2d, yita25_2d, yita2cos_2d]
     Ns = [33, 65, 129]
     for n in Ns:
-        generate_data(f = normal, n = n, path = f'./data/big_neu_normal{n}/', label='neu',
-                            a=500, minQ=5000, maxQ=10000, train_N = 2500, val_N=10)
+        generate_data(normal, f'./data/One{n}/', a=1, minQ=1, maxQ=2, n=n, train_N=1000, val_N=10)
         
