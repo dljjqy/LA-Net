@@ -106,9 +106,6 @@ class AttUNet(nn.Module):
 
 class UNet(nn.Module):
     def __init__(self, in_c=3, out_c=1, features=16, boundary_type='D'):
-        '''
-        mode1 ---> F1, mode2 ---> F2
-        '''
         super().__init__()
         self.maxpool = nn.MaxPool2d((2, 2), (2, 2))
 

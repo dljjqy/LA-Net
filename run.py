@@ -6,13 +6,13 @@ hyper_parameters_dict = {
 "grid_sizes" : [33, 65, 129],
 "batch_sizes" : [8],
 "net" : ['UNet'],
-"features" : [16, 32],
+"features" : [16],
 "data_type": ['One'],
 "boundary_type":['D', 'N'],
+"input_type":['F'],
+"backward_type": ['cg'], "lr":[1e-3], "max_epochs":[200], "ckpt":[False]}
 
-}
-
-log_dir = './lightning_logs/'
+log_dir = '../lightning_logs/'
 
 for parameter in product(*hyper_parameters_dict.values()):
     case = gen_hyper_dict(*parameter,)

@@ -7,9 +7,9 @@ from scipy.sparse.linalg import spsolve
 from scipy.signal import convolve2d
 from scipy.stats import multivariate_normal
 from pytorch_lightning.loggers import TensorBoardLogger
-from datasets import MyDataModule
+from datasets import *
 from models import model_names
-from trainer import pl_Model
+from trainer import ConvModel, LAModel
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pathlib import Path
 from random import uniform
@@ -508,29 +508,33 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
     features: To control the parameters size of network. [16, 32]
     data_type: One or four point source, Big or small area. [bigOne, bigFour, One, Four]
     boundary_type: Dirichlet or mixed with neumann.[D, N]
-    backward_type: The loss function used to train the network.
+    backward_type: The loss function used to train the network.[jac, mse, conv, cg,...]
     lr:learning rate
     max_epochs: epochs
     ckpt: True for load parameters from ckpt
     '''
     exp_name = f'{backward_type}_{input_type:s}_{gridSize}_{net}_{features}_bs{batch_size}_{data_type}{boundary_type}'
-    data_name = f'{data_type}{gridSize}'
-
-    data_path = f'./data/{data_name}/'
-    in_c = 3 if input_type == 'F' else 2
-
-    model = model_names[net](in_c, 1, features, boundary_type)
+    data_path = f'../data/{data_type}{gridSize}/'
     if ckpt:
         exp_name = 'resume_' + exp_name
 
-    dc = {'max_epochs': max_epochs, 'precision': 32,
-          'check_val_every_n_epoch': 1, 'ckpt_path': ckpt, 'mode': 'fit', 'gpus': 1}
-    dc['pl_dataModule'] = MyDataModule(data_path, batch_size, input_type)
+    in_c = 3 if input_type == 'F' else 2
+    model = model_names[net](in_c, 1, features, boundary_type)
+
+    dc = {'max_epochs': max_epochs, 'precision': 32, 'check_val_every_n_epoch': 1, 
+                'ckpt_path': ckpt, 'mode': 'fit', 'gpus': 1}
     dc['check_point'] = ModelCheckpoint(monitor='val_mse', mode='min', every_n_train_steps=0,
                                         every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
-    dc['logger'] = TensorBoardLogger('./lightning_logs/', exp_name)
+    dc['logger'] = TensorBoardLogger('../lightning_logs/', exp_name)
     dc['name'] = exp_name
-    dc['pl_model'] = pl_Model(model, data_path, lr, backward_type, boundary_type)
+
+    if backward_type == 'conv':
+        dc['pl_model'] = ConvModel(model, boundary_type, lr)
+        dc['pl_dataModule'] = ConvDataModule(data_path, batch_size, input_type)
+
+    else:
+        dc['pl_model'] = LAModel(model, data_path, lr, backward_type, boundary_type, cg_max_iter=gridSize//3)
+        dc['pl_dataModule'] = LADataModule(data_path, batch_size, input_type)
     
     if ckpt:
         parameters = torch.load(ckpt)
