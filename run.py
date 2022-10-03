@@ -10,7 +10,7 @@ hyper_parameters_dict = {
 "data_type": ['One'],
 "boundary_type":['D', 'N'],
 "input_type":['F'],
-"backward_type": ['cg'], "lr":[1e-3], "max_epochs":[200], "ckpt":[False]}
+"backward_type": ['conv'], "lr":[1e-3], "max_epochs":[200], "ckpt":[False]}
 
 log_dir = '../lightning_logs/'
 

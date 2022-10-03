@@ -126,8 +126,7 @@ class LAModel(pl.LightningModule):
             self.padder = lambda x:pad_diri_bc(x, (1, 1, 1, 1), g=0)
         elif boundary_type == 'N':
             self.padder = lambda x:pad_diri_bc(x, (0, 0, 1, 1), g=0)
-
-
+            
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.A, self.invM, self.M = np2torch(data_path, backward_type, boundary_type)
         self.invM, self.M, self.A = self.invM.to(device), self.M.to(device),self.A.to(device)
@@ -208,26 +207,24 @@ class ConvModel(pl.LightningModule):
 
     def forward(self, x):
         y = self.net(x)
-        y = self.padder(y)
         return y
     
     def training_step(self, batch, batch_idx):
         x, f = batch
         y = self(x)
         with torch.no_grad():
-            laplace = self.conv_rhs(y) + f
-        conv_loss_value = F.l1_loss(x, laplace)
+            laplace = conv_rhs(self.padder(y)) + f
+        conv_loss_value = F.l1_loss(y, laplace)
         self.log('conv_loss', conv_loss_value)
-        return {'loss', conv_loss_value}
+        return {'loss': conv_loss_value}
 
     def validation_step(self, batch, batch_idx):
         x, f = batch
         y = self(x)
-        with torch.no_grad():
-            laplace = self.conv_rhs(y) + f
-        conv_loss_value = F.l1_loss(x, laplace)
+        laplace = conv_rhs(self.padder(y)) + f
+        conv_loss_value = F.l1_loss(y, laplace)
         self.log('val_conv_loss', conv_loss_value)
-        return {'loss', conv_loss_value}
+        return {'val_loss': conv_loss_value}
 
     def test_step(self, batch, batch_idx):
         pass

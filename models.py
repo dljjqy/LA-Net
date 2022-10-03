@@ -189,9 +189,7 @@ model_names = {'UNet': UNet, 'AttUNet': AttUNet}
 
 if __name__ == '__main__':
     x = torch.rand(4, 3, 65, 65)
-    net1 = myUNet(3, 1, 1)
-    # net2 = AttUNet(3, 1, 2)
-
-    print(net1(x).shape)
+    net = UNet(3, 1, 2, 'N')
+    print(net(x).shape)
     # print(net1.dconvs)
     # print(net2(x).shape)

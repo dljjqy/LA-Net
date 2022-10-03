@@ -523,18 +523,19 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
 
     dc = {'max_epochs': max_epochs, 'precision': 32, 'check_val_every_n_epoch': 1, 
                 'ckpt_path': ckpt, 'mode': 'fit', 'gpus': 1}
-    dc['check_point'] = ModelCheckpoint(monitor='val_mse', mode='min', every_n_train_steps=0,
-                                        every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
     dc['logger'] = TensorBoardLogger('../lightning_logs/', exp_name)
     dc['name'] = exp_name
 
     if backward_type == 'conv':
         dc['pl_model'] = ConvModel(model, boundary_type, lr)
-        dc['pl_dataModule'] = ConvDataModule(data_path, batch_size, input_type)
-
+        dc['pl_dataModule'] = ConvDataModule(data_path, batch_size, input_type, boundary_type)
+        dc['check_point'] = ModelCheckpoint(monitor='val_conv_loss', mode='min', every_n_train_steps=0,
+                                        every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
     else:
         dc['pl_model'] = LAModel(model, data_path, lr, backward_type, boundary_type, cg_max_iter=gridSize//3)
         dc['pl_dataModule'] = LADataModule(data_path, batch_size, input_type)
+        dc['check_point'] = ModelCheckpoint(monitor='val_mse', mode='min', every_n_train_steps=0,
+                                        every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
     
     if ckpt:
         parameters = torch.load(ckpt)

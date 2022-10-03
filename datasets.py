@@ -20,7 +20,7 @@ class LADataset(Dataset):
         b = torch.from_numpy(b).to(torch.float32)
         return  data, b
 
-class ConvDataset(Dataset):
+class ConvDataset_D(Dataset):
     def __init__(self, pathF):
         super().__init__()
         self.F = np.load(pathF)
@@ -29,9 +29,23 @@ class ConvDataset(Dataset):
         return self.F.shape[0]
 
     def __getitem__(self, idx):
-        data = self.F[idx, :]
+        data = self.F[idx, :]   
+        f = torch.from_numpy(data[-1:, 1:-1, 1:-1]).to(torch.float32)
         data = torch.from_numpy(data).to(torch.float32)
-        f = torch.from_numpy(data[-1, :, :]).to(torch.float32)
+        return  data, f
+
+class ConvDataset_N(Dataset):
+    def __init__(self, pathF):
+        super().__init__()
+        self.F = np.load(pathF)
+
+    def __len__(self):
+        return self.F.shape[0]
+
+    def __getitem__(self, idx):
+        data = self.F[idx, :]   
+        f = torch.from_numpy(data[-1:, 1:-1, :]).to(torch.float32)
+        data = torch.from_numpy(data).to(torch.float32)
         return  data, f
 
 class LADataModule(pl.LightningDataModule):
@@ -64,18 +78,21 @@ class LADataModule(pl.LightningDataModule):
 
 class ConvDataModule(pl.LightningDataModule):
     
-    def __init__(self, data_path, batch_size, input_mode='F'):
+    def __init__(self, data_path, batch_size, input_mode='F', boundary_type='D'):
         super().__init__()
         self.trainF = f'{data_path}{input_mode}.npy'
         self.valF = f'{data_path}Val{input_mode}.npy'
-
+        self.boundary_type = boundary_type
         self.batch_size = batch_size
 
     def setup(self, stage):    
         if stage == 'fit' or stage is None:
-            self.train_dataset = LADataset(self.trainF)
-            self.val_dataset = LADataset(self.valF)
-        
+            if self.boundary_type == 'D':
+                self.train_dataset = ConvDataset_D(self.trainF)
+                self.val_dataset = ConvDataset_D(self.valF)
+            elif self.boundary_type == 'N':
+                self.train_dataset = ConvDataset_N(self.trainF)
+                self.val_dataset = ConvDataset_N(self.valF)
         if stage == 'test':
             pass
 
