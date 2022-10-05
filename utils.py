@@ -650,7 +650,10 @@ def gen_test_data(Qs, n, f, a=1, order=2, g=0, path='./data/test/'):
 
 if __name__ == '__main__':
     # yitas = [yita11_2d, yita12_2d, yita22_2d, yita23_2d, yita25_2d, yita2cos_2d]
-    Ns = [33, 65, 129]
+    Ns = [129, 257, 513]
     for n in Ns:
-        generate_data(normal, f'./data/One{n}/', a=1, minQ=1, maxQ=2, n=n, train_N=1000, val_N=10)
-        
+        generate_data(normal, f'../data/One{n}/', a=1, minQ=1, maxQ=2, n=n, train_N=1000, val_N=10)
+        generate_data(normal_fourth, f'../data/Four{n}/', a=1, minQ=1, maxQ=2, n=n, train_N=1000, val_N=10)
+
+        generate_data(normal, f'../data/BigOne{n}/', a=500, minQ=5000, maxQ=10000, n=n, train_N=1000, val_N=10)
+        generate_data(normal_fourth, f'../data/BigFour{n}/', a=500, minQ=5000, maxQ=10000, n=n, train_N=1000, val_N=10)
