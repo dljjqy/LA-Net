@@ -49,9 +49,10 @@ def pad_diri_bc(x, pad=(0, 0, 1, 1), g = 0):
     x = F.pad(x, pad=pad, mode='constant', value=g)
     return x
 
-def conv_rhs(x, kernel, h, f):
+def conv_rhs(x):
+    kernel = torch.tensor([[0, 0.25, 0], [0.25, 0, 0.25], [0, 0.25, 0]])
     kernel = kernel.type_as(x).view(1, 1, 3, 3).repeat(1, 1, 1, 1)
-    rhs = h**2 * (F.conv2d(x, kernel) + f/4)
+    rhs = F.conv2d(x, kernel)
     return rhs
 
 def gradient_descent(x, A, b):
@@ -86,7 +87,8 @@ def energy(x, A, b):
 
 def mse_loss(x, A, b):
     Ax = mmbv(A, x)
-    return F.mse_loss(Ax, b)
+    norms = torch.norm((Ax-b), p=2, dim=1, keepdim=True)
+    return norms.mean()
 
 def diri_rhs(x, f, h, g=0):
     '''
@@ -95,7 +97,7 @@ def diri_rhs(x, f, h, g=0):
     '''
     x = pad_diri_bc(x, pad=(1, 1, 1, 1), g=g)
     rhs = conv_rhs(x)
-    return rhs + h*h*f[..., 1:-1, 1:-1]
+    return rhs + h*h*f[..., 1:-1, 1:-1]/4
 
 def neu_rhs(x, f, h, g_n=0, g_d=0):
     '''
@@ -106,11 +108,11 @@ def neu_rhs(x, f, h, g_n=0, g_d=0):
     x = pad_neu_bc(x, h, pad=(1, 1, 0, 0), g=g_n)
     x = pad_diri_bc(x, (0, 0, 1, 1), g=g_d)
     rhs = conv_rhs(x)
-    return rhs + h*h*f[...,1:-1, 1:-1]
+    return rhs + h*h*f[..., 1:-1, :]/4
 
 class LAModel(pl.LightningModule):
-    def __init__(self, net, data_path='./data/', lr=1e-3, backward_type='jac', boundary_type='D',
-                        cg_max_iter=20):
+    def __init__(self, net, h, data_path='./data/', lr=1e-3, 
+                backward_type='jac', boundary_type='D', cg_max_iter=20):
         '''
             All right side computation:
             dir --> output N-2 x N-2 --> pad G ---> get all loss value.
@@ -120,12 +122,16 @@ class LAModel(pl.LightningModule):
         super().__init__()
         self.net = net
         self.lr = lr
+        self.h = h
         self.backward_type = backward_type
         self.cg_max_iters = cg_max_iter
+
         if boundary_type == 'D':
             self.padder = lambda x:pad_diri_bc(x, (1, 1, 1, 1), g=0)
+            self.conver = diri_rhs
         elif boundary_type == 'N':
             self.padder = lambda x:pad_diri_bc(x, (0, 0, 1, 1), g=0)
+            self.conver = neu_rhs
             
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.A, self.invM, self.M = np2torch(data_path, backward_type, boundary_type)
@@ -133,37 +139,42 @@ class LAModel(pl.LightningModule):
         
     def forward(self, x):
         y = self.net(x)
-        y = self.padder(y)
         return y
 
     def training_step(self, batch, batch_idx):
-        x, b = batch
-        y = self(x)
-        y = torch.flatten(y, 1, -1)
+        x, b, f = batch
+        u = self(x)
+        y = torch.flatten(self.padder(u), 1, -1)
         with torch.no_grad():
             jac = self.rhs_jac(y, b)
             cg = self.rhs_cg(y, b)
+            conv = self.conver(u, f, self.h)
+
         loss_values = {
             'mse' : mse_loss(y, self.A, b),
             'jac' : F.l1_loss(y, jac),
             'cg': F.l1_loss(y, cg, self.cg_max_iters),
-            'energy' : energy(y, self.A, b)}
+            'energy' : energy(y, self.A, b),
+            'conv': F.l1_loss(u, conv)}
 
         self.log_dict(loss_values)
         return {'loss' : loss_values[self.backward_type]}
 
     def validation_step(self, batch, batch_idx):
-        x, b = batch
-        y = self(x)
-        y = torch.flatten(y, 1, -1)
+        x, b, f = batch
+        u = self(x)
+        y = torch.flatten(self.padder(u), 1, -1)
         jac = self.rhs_jac(y, b)
-        cg = self.rhs_cg(y, b)
+        cg = self.rhs_cg(y, b)            
+        conv = self.conver(u, f, self.h)
+
 
         loss_values = {
             'val_mse' : mse_loss(y, self.A, b),
             'val_jac' : F.l1_loss(y, jac),
             'val_cg': F.l1_loss(y, cg, self.cg_max_iters),
-            'val_energy' : energy(y, self.A, b)}
+            'val_energy' : energy(y, self.A, b),
+            'val_conv': F.l1_loss(u, conv)}
 
         self.log_dict(loss_values)
         return loss_values
@@ -195,46 +206,6 @@ class LAModel(pl.LightningModule):
         lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
         return [optimizer], [lr_scheduler]
 
-class ConvModel(pl.LightningModule):
-    def __init__(self, net, boundary_type, h, lr=1e-3):
-        super().__init__()
-        self.net = net
-        if boundary_type == 'D':
-            self.padder = lambda x:pad_diri_bc(x, (1, 1, 1,1), g=0)
-        elif boundary_type == 'N':
-            self.padder = lambda x:pad_diri_bc(pad_neu_bc(x), (0, 0, 1, 1), g=0)
-        self.lr = lr
-        self.h = h
-        self.kernel = torch.tensor([[0, 0.25, 0], [0.25, 0, 0.25], [0, 0.25, 0]])
-
-    def forward(self, x):
-        y = self.net(x)
-        return y
-    
-    def training_step(self, batch, batch_idx):
-        x, f = batch
-        y = self(x)
-        with torch.no_grad():
-            laplace = conv_rhs(self.padder(y), self.kernel, self.h, f) 
-        conv_loss_value = F.l1_loss(y, laplace)
-        self.log('conv_loss', conv_loss_value)
-        return {'loss': conv_loss_value}
-
-    def validation_step(self, batch, batch_idx):
-        x, f = batch
-        y = self(x)
-        laplace = conv_rhs(self.padder(y), self.kernel, self.h, f) 
-        conv_loss_value = F.l1_loss(y, laplace)
-        self.log('val_conv_loss', conv_loss_value)
-        return {'val_loss': conv_loss_value}
-
-    def test_step(self, batch, batch_idx):
-        pass
-    
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
-        lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.85)
-        return [optimizer], [lr_scheduler]
 
 # class pl_lbfgs_Model(pl_Model):
 #     def __init__(self, *args, **kwargs):

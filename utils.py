@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-import torch.nn.functional as F
 import pytorch_lightning as pl
 from scipy import sparse
 from scipy.sparse.linalg import spsolve
@@ -9,7 +8,7 @@ from scipy.stats import multivariate_normal
 from pytorch_lightning.loggers import TensorBoardLogger
 from datasets import *
 from models import model_names
-from trainer import ConvModel, LAModel
+from trainer import LAModel
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pathlib import Path
 from random import uniform
@@ -528,17 +527,10 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
 
     h = (2*500)/(gridSize-1) if 'big' in data_type else 2/(gridSize-1)
         
-    if backward_type == 'conv':
-        dc['pl_model'] = ConvModel(model, boundary_type, h, lr)
-        dc['pl_dataModule'] = ConvDataModule(data_path, batch_size, input_type, boundary_type)
-        dc['check_point'] = ModelCheckpoint(monitor='val_conv_loss', mode='min', every_n_train_steps=0,
-                                        every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
-    else:
-        dc['pl_model'] = LAModel(model, data_path, lr, backward_type, boundary_type, cg_max_iter=gridSize//3)
-        dc['pl_dataModule'] = LADataModule(data_path, batch_size, input_type)
-        dc['check_point'] = ModelCheckpoint(monitor='val_mse', mode='min', every_n_train_steps=0,
-                                        every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
-    
+    dc['pl_model'] = LAModel(model, h, data_path, lr, backward_type, boundary_type, cg_max_iter=gridSize//3)
+    dc['pl_dataModule'] = LADataModule(data_path, batch_size, input_type)
+    dc['check_point'] = ModelCheckpoint(monitor='val_mse', mode='min', every_n_train_steps=0,
+                                    every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
     if ckpt:
         parameters = torch.load(ckpt)
         dc['pl_model'].load_state_dict(parameters['state_dict'])

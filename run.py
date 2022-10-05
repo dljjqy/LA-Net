@@ -3,14 +3,14 @@ from itertools import product
 from pathlib import Path
 
 hyper_parameters_dict = {
-"grid_sizes" : [129, 257, 513],
-"batch_sizes" : [8],
+"grid_sizes" : [65],
+"batch_sizes" : [16],
 "net" : ['UNet'],
-"features" : [16, 32],
-"data_type": ['One', 'Four', 'BigOne', 'BigFour'],
-"boundary_type":['D', 'N'],
+"features" : [16],
+"data_type": ['One'],
+"boundary_type":['N'],
 "input_type":['F'],
-"backward_type": ['conv', 'jac', 'cg' ], "lr":[1e-3], "max_epochs":[150], "ckpt":[False]}
+"backward_type": ['conv', 'jac' ], "lr":[1e-3], "max_epochs":[150], "ckpt":[False]}
 
 log_dir = '../lightning_logs/'
 
