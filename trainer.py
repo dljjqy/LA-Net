@@ -49,10 +49,10 @@ def pad_diri_bc(x, pad=(0, 0, 1, 1), g = 0):
     x = F.pad(x, pad=pad, mode='constant', value=g)
     return x
 
-def conv_rhs(x):
-    kernel = torch.tensor([[[[0, 0.25, 0], [0.25, 0, 0.25], [0, 0.25, 0]]]])
-    kernel = kernel.type_as(x)
-    return F.conv2d(x, kernel)
+def conv_rhs(x, kernel, h, f):
+    kernel = kernel.type_as(x).view(1, 1, 3, 3).repeat(1, 1, 1, 1)
+    rhs = h**2 * (F.conv2d(x, kernel) + f/4)
+    return rhs
 
 def gradient_descent(x, A, b):
     r = mmbv(A, x) - b
@@ -196,7 +196,7 @@ class LAModel(pl.LightningModule):
         return [optimizer], [lr_scheduler]
 
 class ConvModel(pl.LightningModule):
-    def __init__(self, net, boundary_type, lr=1e-3):
+    def __init__(self, net, boundary_type, h, lr=1e-3):
         super().__init__()
         self.net = net
         if boundary_type == 'D':
@@ -204,6 +204,8 @@ class ConvModel(pl.LightningModule):
         elif boundary_type == 'N':
             self.padder = lambda x:pad_diri_bc(pad_neu_bc(x), (0, 0, 1, 1), g=0)
         self.lr = lr
+        self.h = h
+        self.kernel = torch.tensor([[0, 0.25, 0], [0.25, 0, 0.25], [0, 0.25, 0]])
 
     def forward(self, x):
         y = self.net(x)
@@ -213,7 +215,7 @@ class ConvModel(pl.LightningModule):
         x, f = batch
         y = self(x)
         with torch.no_grad():
-            laplace = conv_rhs(self.padder(y)) + f
+            laplace = conv_rhs(self.padder(y), self.kernel, self.h, f) 
         conv_loss_value = F.l1_loss(y, laplace)
         self.log('conv_loss', conv_loss_value)
         return {'loss': conv_loss_value}
@@ -221,7 +223,7 @@ class ConvModel(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x, f = batch
         y = self(x)
-        laplace = conv_rhs(self.padder(y)) + f
+        laplace = conv_rhs(self.padder(y), self.kernel, self.h, f) 
         conv_loss_value = F.l1_loss(y, laplace)
         self.log('val_conv_loss', conv_loss_value)
         return {'val_loss': conv_loss_value}

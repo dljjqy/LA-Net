@@ -526,8 +526,10 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
     dc['logger'] = TensorBoardLogger('../lightning_logs/', exp_name)
     dc['name'] = exp_name
 
+    h = (2*500)/(gridSize-1) if 'big' in data_type else 2/(gridSize-1)
+        
     if backward_type == 'conv':
-        dc['pl_model'] = ConvModel(model, boundary_type, lr)
+        dc['pl_model'] = ConvModel(model, boundary_type, h, lr)
         dc['pl_dataModule'] = ConvDataModule(data_path, batch_size, input_type, boundary_type)
         dc['check_point'] = ModelCheckpoint(monitor='val_conv_loss', mode='min', every_n_train_steps=0,
                                         every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
