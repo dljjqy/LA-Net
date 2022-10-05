@@ -8,7 +8,7 @@ hyper_parameters_dict = {
 "net" : ['UNet'],
 "features" : [16],
 "data_type": ['One'],
-"boundary_type":['N'],
+"boundary_type":['D'],
 "input_type":['F'],
 "backward_type": ['conv', 'jac' ], "lr":[1e-3], "max_epochs":[150], "ckpt":[False]}
 

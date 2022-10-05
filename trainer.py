@@ -125,7 +125,7 @@ class LAModel(pl.LightningModule):
         self.h = h
         self.backward_type = backward_type
         self.cg_max_iters = cg_max_iter
-
+        self.boundary_type = boundary_type
         if boundary_type == 'D':
             self.padder = lambda x:pad_diri_bc(x, (1, 1, 1, 1), g=0)
             self.conver = diri_rhs
@@ -155,7 +155,15 @@ class LAModel(pl.LightningModule):
             'jac' : F.l1_loss(y, jac),
             'cg': F.l1_loss(y, cg, self.cg_max_iters),
             'energy' : energy(y, self.A, b),
-            'conv': F.l1_loss(u, conv)}
+            'conv': F.l1_loss(u, conv),}
+        if self.boundary_type == 'D':            
+            b, c, nx, ny = u.shape
+            jac = jac.reshape(b, c, nx+2, nx+2)
+            loss_values['diff'] =  F.l1_loss(jac[...,1:-1, 1:-1], conv)
+        else:
+            b, c, nx, ny = u.shape
+            jac = jac.reshape(b, c, nx+2, nx+2)
+            loss_values['diff'] =  F.l1_loss(jac[...,1:-1, :], conv)
 
         self.log_dict(loss_values)
         return {'loss' : loss_values[self.backward_type]}
@@ -175,6 +183,15 @@ class LAModel(pl.LightningModule):
             'val_cg': F.l1_loss(y, cg, self.cg_max_iters),
             'val_energy' : energy(y, self.A, b),
             'val_conv': F.l1_loss(u, conv)}
+
+        if self.boundary_type == 'D':
+            b, c, nx, ny = u.shape
+            jac = jac.reshape(b, c, nx+2, nx+2)
+            loss_values['val_diff'] =  F.l1_loss(jac[...,1:-1, 1:-1], conv)
+        else:
+            b, c, nx, ny = u.shape
+            jac = jac.reshape(b, c, nx+2, nx+2)
+            loss_values['val_diff'] =  F.l1_loss(jac[...,1:-1, :], conv)
 
         self.log_dict(loss_values)
         return loss_values
