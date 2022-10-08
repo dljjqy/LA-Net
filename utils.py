@@ -530,7 +530,7 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
     dc['pl_model'] = LAModel(model, h, data_path, lr, backward_type, boundary_type, cg_max_iter=gridSize//3)
     dc['pl_dataModule'] = LADataModule(data_path, batch_size, input_type)
     dc['check_point'] = ModelCheckpoint(monitor='val_mse', mode='min', every_n_train_steps=0,
-                                    every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
+                                        every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
     if ckpt:
         parameters = torch.load(ckpt)
         dc['pl_model'].load_state_dict(parameters['state_dict'])
@@ -644,10 +644,10 @@ def gen_test_data(Qs, n, f, a=1, order=2, g=0, path='./data/test/'):
 
 if __name__ == '__main__':
     # yitas = [yita11_2d, yita12_2d, yita22_2d, yita23_2d, yita25_2d, yita2cos_2d]
-    Ns = [129, 257, 513]
+    Ns = [129]
     for n in Ns:
-        generate_data(normal, f'../data/One{n}/', a=1, minQ=1, maxQ=2, n=n, train_N=1000, val_N=10)
-        generate_data(normal_fourth, f'../data/Four{n}/', a=1, minQ=1, maxQ=2, n=n, train_N=1000, val_N=10)
+        # generate_data(normal, f'../data/One{n}/', a=1, minQ=1, maxQ=2, n=n, train_N=1000, val_N=10)
+        # generate_data(normal_fourth, f'../data/Four{n}/', a=1, minQ=1, maxQ=2, n=n, train_N=1000, val_N=10)
 
         generate_data(normal, f'../data/BigOne{n}/', a=500, minQ=5000, maxQ=10000, n=n, train_N=1000, val_N=10)
-        generate_data(normal_fourth, f'../data/BigFour{n}/', a=500, minQ=5000, maxQ=10000, n=n, train_N=1000, val_N=10)
+        # generate_data(normal_fourth, f'../data/BigFour{n}/', a=500, minQ=5000, maxQ=10000, n=n, train_N=1000, val_N=10)

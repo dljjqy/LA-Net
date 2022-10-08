@@ -185,11 +185,11 @@ class LAModel(pl.LightningModule):
 
         if self.boundary_type == 'D':
             b, c, nx, ny = u.shape
-            jac = jac.reshape(b, c, nx+2, nx+2)
+            jac = jac.reshape(b, c, nx+2, ny+2)
             loss_values['val_diff'] =  F.l1_loss(jac[...,1:-1, 1:-1], conv)
         else:
             b, c, nx, ny = u.shape
-            jac = jac.reshape(b, c, nx+2, nx+2)
+            jac = jac.reshape(b, c, nx+2, ny+2)
             loss_values['val_diff'] =  F.l1_loss(jac[...,1:-1, :], conv)
 
         self.log_dict(loss_values)
