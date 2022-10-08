@@ -176,7 +176,6 @@ class LAModel(pl.LightningModule):
         cg = self.rhs_cg(y, b)            
         conv = self.conver(u, f, self.h)
 
-
         loss_values = {
             'val_mse' : mse_loss(y, self.A, b),
             'val_jac' : F.l1_loss(y, jac),
