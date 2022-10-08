@@ -513,7 +513,7 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
     max_epochs: epochs
     ckpt: True for load parameters from ckpt
     '''
-    exp_name = f'{backward_type}_{input_type:s}_{gridSize}_{net}_{features}_bs{batch_size}_{data_type}{boundary_type}'
+    exp_name = f'{numerical_method}_{backward_type}_{input_type:s}_{gridSize}_{net}_{features}_bs{batch_size}_{data_type}{boundary_type}'
     data_path = f'../data/{data_type}{gridSize}/'
     if ckpt:
         exp_name = 'resume_' + exp_name

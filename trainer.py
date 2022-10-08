@@ -1,3 +1,4 @@
+from multiprocessing import reduction
 from turtle import forward
 import torch
 import pytorch_lightning as pl
@@ -87,9 +88,9 @@ def energy(x, A, b):
 
 def mse_loss(x, A, b):
     Ax = mmbv(A, x)
-    norms = torch.norm((Ax-b), p=2, dim=1, keepdim=True)
-    return norms.mean()
-
+    norms = torch.norm((Ax-b), p=2, dim=1, keepdim=True, reduction='mean')
+    return norms
+    
 def diri_rhs(x, f, h, g=0):
     '''
     All boundaries are Dirichlet type.
