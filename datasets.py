@@ -22,19 +22,19 @@ class LADataset(Dataset):
 
 class LADataModule(pl.LightningDataModule):
     
-    def __init__(self, data_path, batch_size, input_mode='F'):
+    def __init__(self, data_path, batch_size, input_mode='F1', numerical_method='fd'):
         super().__init__()
         self.trainF = f'{data_path}{input_mode}.npy'
         self.valF = f'{data_path}Val{input_mode}.npy'
 
-        self.trainB = f'{data_path}B.npy'
-        self.valB = f'{data_path}ValB.npy'
+        self.trainB = f'{data_path}{numerical_method}_B.npy'
+        self.valB = f'{data_path}{numerical_method}_ValB.npy'
         self.batch_size = batch_size
+
     def setup(self, stage):    
         if stage == 'fit' or stage is None:
             self.train_dataset = LADataset(self.trainB, self.trainF)
             self.val_dataset = LADataset(self.valB, self.valF)
-
         if stage == 'test':
             pass
 

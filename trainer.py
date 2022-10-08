@@ -14,12 +14,12 @@ def coo2tensor(A):
     shape = A.shape
     return torch.sparse.FloatTensor(i, v, torch.Size(shape)).to(torch.float32)
 
-def np2torch(data_path, backward_type='jac', boundary_type='D'):
+def np2torch(data_path, backward_type='jac', boundary_type='D', numerical_method='fd'):
     '''
     backward_type: To identify which iterative method to use.
         Jacobian, Gauess Seidel, CG.
     '''
-    A_path = f'{data_path}A{boundary_type}.npz'
+    A_path = f'{data_path}{numerical_method}_A{boundary_type}.npz'
     A = sparse.load_npz(A_path)
     D = sparse.diags(A.diagonal())
     L = sparse.tril(A, -1)
@@ -111,7 +111,7 @@ def neu_rhs(x, f, h, g_n=0, g_d=0):
     return rhs + h*h*f[..., 1:-1, :]/4
 
 class LAModel(pl.LightningModule):
-    def __init__(self, net, h, data_path='./data/', lr=1e-3, 
+    def __init__(self, net, h, data_path='./data/', lr=1e-3, numerical_method='fd',
                 backward_type='jac', boundary_type='D', cg_max_iter=20):
         '''
             All right side computation:
@@ -134,7 +134,7 @@ class LAModel(pl.LightningModule):
             self.conver = neu_rhs
             
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.A, self.invM, self.M = np2torch(data_path, backward_type, boundary_type)
+        self.A, self.invM, self.M = np2torch(data_path, backward_type, boundary_type, numerical_method)
         self.invM, self.M, self.A = self.invM.to(device), self.M.to(device),self.A.to(device)
         
     def forward(self, x):
@@ -185,11 +185,11 @@ class LAModel(pl.LightningModule):
 
         if self.boundary_type == 'D':
             b, c, nx, ny = u.shape
-            jac = jac.reshape(b, c, nx+2, ny+2)
+            jac = jac.reshape(b, c, nx+2, nx+2)
             loss_values['val_diff'] =  F.l1_loss(jac[...,1:-1, 1:-1], conv)
         else:
             b, c, nx, ny = u.shape
-            jac = jac.reshape(b, c, nx+2, ny+2)
+            jac = jac.reshape(b, c, nx+2, nx+2)
             loss_values['val_diff'] =  F.l1_loss(jac[...,1:-1, :], conv)
 
         self.log_dict(loss_values)

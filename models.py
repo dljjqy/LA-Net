@@ -47,7 +47,7 @@ class Attention_block(nn.Module):
         return out
 
 class AttUNet(nn.Module):
-    def __init__(self, in_c=3, out_c=1, features=16, boundary_type = ''):
+    def __init__(self, in_c=3, out_c=1, features=16, boundary_type = 'D'):
         super().__init__()
         self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.dconv0 = DoubleConv(in_c, features)

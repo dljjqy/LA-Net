@@ -1,3 +1,4 @@
+from cProfile import label
 import numpy as np
 import torch
 import pytorch_lightning as pl
@@ -365,7 +366,7 @@ def fv_mesh(a, N):
 def fv_b_func(a, N, f):
     h = 2*a / N
     xx, yy = fv_mesh(a, N)
-    f_mat = f(xx, yy).flatten()
+    f_mat = f(xx, yy, h).flatten()
     return f_mat * h * h
 
 def fv_b_point(N):
@@ -497,8 +498,8 @@ def fv_A_neu(n):
     A = A.tocoo()
     return A
         
-def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type,
-                    input_type='F', backward_type='jac', lr=1e-3, max_epochs=100, ckpt=False):
+def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type, numerical_method,
+                    input_type='F1', backward_type='jac', lr=1e-3, max_epochs=100, ckpt=False):
     '''
     gridSize: How big mesh. 33, 65, 129
     batch_size: batch size. 8, 16, 24, 32
@@ -517,9 +518,8 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
     if ckpt:
         exp_name = 'resume_' + exp_name
 
-    in_c = 3 if input_type == 'F' else 2
+    in_c = 3
     model = model_names[net](in_c, 1, features, boundary_type)
-
     dc = {'max_epochs': max_epochs, 'precision': 32, 'check_val_every_n_epoch': 1, 
                 'ckpt_path': ckpt, 'mode': 'fit', 'gpus': 1}
     dc['logger'] = TensorBoardLogger('../lightning_logs/', exp_name)
@@ -527,9 +527,9 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
 
     h = (2*500)/(gridSize-1) if 'big' in data_type else 2/(gridSize-1)
         
-    dc['pl_model'] = LAModel(model, h, data_path, lr, backward_type, boundary_type, cg_max_iter=gridSize//3)
-    dc['pl_dataModule'] = LADataModule(data_path, batch_size, input_type)
-    dc['check_point'] = ModelCheckpoint(monitor='val_mse', mode='min', every_n_train_steps=0,
+    dc['pl_model'] = LAModel(model, h, data_path, lr, numerical_method, backward_type, boundary_type, cg_max_iter=gridSize//2)
+    dc['pl_dataModule'] = LADataModule(data_path, batch_size, input_type, numerical_method)
+    dc['check_point'] = ModelCheckpoint(monitor= f'val_{backward_type}', mode='min', every_n_train_steps=0,
                                         every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
     if ckpt:
         parameters = torch.load(ckpt)
@@ -586,40 +586,61 @@ def generate_data(func, dir, a=1, minQ=1, maxQ=2, n=130, train_N=2500, val_N=10,
     y = np.linspace(-a, a, n)
     xx, yy = np.meshgrid(x, y)
 
-    f = func(xx, yy, h)
+    f1 = func(xx, yy, h)
+    f2 = np.zeros_like(xx)
+    f2[n//2, n//2] += 1
 
     seed(1)
     train_Qs = [uniform(minQ, maxQ) for _ in range(train_N)]
     val_Qs = np.linspace(minQ, maxQ, val_N)
 
+    F1 = np.array(
+        list(np.stack([xx, yy, q * f1], axis=ax) for q in train_Qs))
+    np.save(dir+'F1.npy', F1)
+    del F1
 
-    F = np.array(
-        list(np.stack([xx, yy, q * f], axis=ax) for q in train_Qs))
-    np.save(dir+'F.npy', F)
-    del F
+    F2 = np.array(
+        list(np.stack([xx, yy, q * f2], axis=ax) for q in train_Qs))
+    np.save(dir+'F2.npy', F2)
+    del F2
 
-    ValF = np.array(
-        list(np.stack([xx, yy, q * f], axis=ax) for q in val_Qs))
-    np.save(dir+'ValF.npy', ValF)
-    del ValF
+    ValF1 = np.array(
+        list(np.stack([xx, yy, q * f1], axis=ax) for q in val_Qs))
+    ValF2 = np.array(
+        list(np.stack([xx, yy, q * f2], axis=ax) for q in val_Qs))
+    np.save(dir+'ValF1.npy', ValF1)
+    np.save(dir+'ValF2.npy', ValF2)
+    del ValF1, ValF2
 
     Ad = fd_A_with_bc(n)
-    sparse.save_npz(dir+'AD', Ad)
+    sparse.save_npz(dir+'fd_AD', Ad)
+    del Ad
+
+    Ad = fv_A_dirichlet(n)
+    sparse.save_npz(dir+'fv_AD', Ad)
     del Ad
 
     An = fd_A_neu(n)
-    sparse.save_npz(dir+'AN', An)
+    sparse.save_npz(dir+'fd_AN', An)
     del An
 
-    b = fd_b_bc(f, h)
-    # As we consider homogeneous boundary type.
-    B = np.array(list(b * q for q in train_Qs))
-    np.save(dir+'B.npy', np.array(B))
-    del B
+    An = fv_A_neu(n)
+    sparse.save_npz(dir+'fv_AN', An)
+    del An
     
+    b = fd_b_bc(f1, h)
+    B = np.array(list(b * q for q in train_Qs))
     valB = np.array(list(b * q for q in val_Qs))
-    np.save(dir+'ValB.npy', np.array(valB))
-    del valB
+    np.save(dir+'fd_ValB.npy', np.array(valB))
+    np.save(dir+'fd_B.npy', np.array(B))
+    del B, valB 
+
+    b = fv_b_point(n)
+    B = np.array(list(b * q for q in train_Qs))
+    valB = np.array(list(b * q for q in val_Qs))
+    np.save(dir+'fv_ValB.npy', np.array(valB))
+    np.save(dir+'fv_B.npy', np.array(B))
+    del B, valB
 
     return True
 
@@ -649,5 +670,5 @@ if __name__ == '__main__':
         # generate_data(normal, f'../data/One{n}/', a=1, minQ=1, maxQ=2, n=n, train_N=1000, val_N=10)
         # generate_data(normal_fourth, f'../data/Four{n}/', a=1, minQ=1, maxQ=2, n=n, train_N=1000, val_N=10)
 
-        generate_data(normal, f'../data/BigOne{n}/', a=500, minQ=5000, maxQ=10000, n=n, train_N=1000, val_N=10)
+        generate_data(normal, f'../data/BigOne{n}/', a=500, minQ=10000, maxQ=20000, n=n, train_N=2000, val_N=20)
         # generate_data(normal_fourth, f'../data/BigFour{n}/', a=500, minQ=5000, maxQ=10000, n=n, train_N=1000, val_N=10)
