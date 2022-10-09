@@ -4,14 +4,16 @@ from pathlib import Path
 
 hyper_parameters_dict = {
 "grid_sizes" : [129],
-"batch_sizes" : [16],
+"batch_sizes" : [8],
 "net" : ['UNet'],
-"features" : [32],
+"features" : [16],
 "data_type": ['BigOne'],
 "boundary_type":['D', 'N'],
-"numerical_method":['fd'],
-"input_type":['F1', 'F2'],
-"backward_type": ['jac', 'cg'], "lr":[1e-3], "max_epochs":[150], "ckpt":[False]}
+"numerical_method":['fv', 'fd'],
+"backward_type": ['cg'], 
+"lr":[1e-3], 
+"max_epochs":[150], 
+"ckpt":[False]}
 
 log_dir = '../lightning_logs/'
 

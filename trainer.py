@@ -88,9 +88,9 @@ def energy(x, A, b):
 
 def mse_loss(x, A, b):
     Ax = mmbv(A, x)
-    norms = torch.norm((Ax-b), p=2, dim=1, keepdim=True, reduction='mean')
-    return norms
-    
+    norms = torch.norm((Ax-b), p=2, dim=1, keepdim=True)
+    return norms.mean()
+
 def diri_rhs(x, f, h, g=0):
     '''
     All boundaries are Dirichlet type.
@@ -99,6 +99,16 @@ def diri_rhs(x, f, h, g=0):
     x = pad_diri_bc(x, pad=(1, 1, 1, 1), g=g)
     rhs = conv_rhs(x)
     return rhs + h*h*f[..., 1:-1, 1:-1]/4
+
+def fv_rhs(x, f, h, g=0):
+    '''
+    All boundaries are Dirichlet type.
+    Netwotk should output prediction without boundary points.(N-2 x N-2)
+    '''
+    x = pad_diri_bc(x, pad=(1, 1, 1, 1), g=g)
+    rhs = conv_rhs(x)
+    rhs += h*h*f/4
+    return rhs
 
 def neu_rhs(x, f, h, g_n=0, g_d=0):
     '''
@@ -133,6 +143,10 @@ class LAModel(pl.LightningModule):
         elif boundary_type == 'N':
             self.padder = lambda x:pad_diri_bc(x, (0, 0, 1, 1), g=0)
             self.conver = neu_rhs
+        
+        if numerical_method == 'fv':
+            self.padder = lambda x:x
+            self.conver = fv_rhs
             
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.A, self.invM, self.M = np2torch(data_path, backward_type, boundary_type, numerical_method)
@@ -157,15 +171,6 @@ class LAModel(pl.LightningModule):
             'cg': F.l1_loss(y, cg, self.cg_max_iters),
             'energy' : energy(y, self.A, b),
             'conv': F.l1_loss(u, conv),}
-        if self.boundary_type == 'D':            
-            b, c, nx, ny = u.shape
-            jac = jac.reshape(b, c, nx+2, nx+2)
-            loss_values['diff'] =  F.l1_loss(jac[...,1:-1, 1:-1], conv)
-        else:
-            b, c, nx, ny = u.shape
-            jac = jac.reshape(b, c, nx+2, nx+2)
-            loss_values['diff'] =  F.l1_loss(jac[...,1:-1, :], conv)
-
         self.log_dict(loss_values)
         return {'loss' : loss_values[self.backward_type]}
 
@@ -183,16 +188,7 @@ class LAModel(pl.LightningModule):
             'val_cg': F.l1_loss(y, cg, self.cg_max_iters),
             'val_energy' : energy(y, self.A, b),
             'val_conv': F.l1_loss(u, conv)}
-
-        if self.boundary_type == 'D':
-            b, c, nx, ny = u.shape
-            jac = jac.reshape(b, c, nx+2, nx+2)
-            loss_values['val_diff'] =  F.l1_loss(jac[...,1:-1, 1:-1], conv)
-        else:
-            b, c, nx, ny = u.shape
-            jac = jac.reshape(b, c, nx+2, nx+2)
-            loss_values['val_diff'] =  F.l1_loss(jac[...,1:-1, :], conv)
-
+            
         self.log_dict(loss_values)
         return loss_values
     
