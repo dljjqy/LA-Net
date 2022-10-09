@@ -517,8 +517,9 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
     data_path = f'../data/{data_type}{gridSize}/'
     if ckpt:
         exp_name = 'resume_' + exp_name
-    
-    model = model_names[net](features=features, boundary_type=boundary_type, numerical_method=numerical_method)
+    layers = list(2**i for i in range(int(np.log2(gridSize))))
+    model = model_names[net](layers=layers, features=features, boundary_type=boundary_type, 
+                        numerical_method=numerical_method)
     dc = {'max_epochs': max_epochs, 'precision': 32, 'check_val_every_n_epoch': 1, 
                 'ckpt_path': ckpt, 'mode': 'fit', 'gpus': 1}
     dc['logger'] = TensorBoardLogger('../lightning_logs/', exp_name)

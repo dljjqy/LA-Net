@@ -47,7 +47,7 @@ class Attention_block(nn.Module):
         return out
 
 class AttUNet(nn.Module):
-    def __init__(self, in_c=3, out_c=1, features=16, boundary_type = 'D'):
+    def __init__(self, layers, in_c=3, out_c=1, features=16, boundary_type = 'D'):
         super().__init__()
         self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.dconv0 = DoubleConv(in_c, features)
@@ -105,7 +105,7 @@ class AttUNet(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self, in_c=3, out_c=1, features=16, boundary_type='D', numerical_method='fd'):
+    def __init__(self, layers, in_c=3, out_c=1, features=16, boundary_type='D', numerical_method='fd'):
         super().__init__()
         self.maxpool = nn.MaxPool2d((2, 2), (2, 2))
 
@@ -148,6 +148,32 @@ class UNet(nn.Module):
         return y
 
 
+# class Encoder(nn.Module):
+#     def __init__(self, in_c, hide_c):
+#         super().__init__()
+#         channels = [in_c] + hide_c
+#         self.dconvs = nn.ModuleList([DoubleConv(channels[i], channels[i+1])] \
+#                 for i in range(len(channels) - 1))
+#         self.pool = nn.MaxPool2d(2)
+
+#     def forward(self, x):
+#         xs = []
+#         for dconv in self.dconvs:
+#             x = dconv(x)
+#             xs.append(x)
+#             x = self.pool(x)
+#         return xs
+
+# class Decoder(nn.Module):
+#     def __init__(self, channels):
+#         super().__init__()
+#         self.channels = channels[::-1]
+#         self.ups = list(nn.ConvTranspose2d(channels[i], channels[i+1], 2, 2)\
+#                      for i in range(len(self.channels) - 2))
+#         self.ups.append()
+#         pass
+#     pass
+
 class myUNet(nn.Module):
     def __init__(self, in_c=3, out_c=1, features=8, layers=[1, 2, 4, 8, 16, 32, 64], boundary_type='D', numerical_method='fd'):
         super().__init__()
@@ -172,6 +198,10 @@ class myUNet(nn.Module):
         self.ups[0] = nn.ConvTranspose2d(features * layers[1],  features * layers[0], (3, 3), (2, 2))
         self.uconvs = self.uconvs[::-1]
         self.ups = self.ups[::-1]
+
+        self.dconvs = nn.ModuleList(self.dconvs)
+        self.ups = nn.ModuleList(self.ups)
+        self.uconvs = nn.ModuleList(self.uconvs)
 
     def forward(self, x):
         xs = [self.dconvs[0](x)]

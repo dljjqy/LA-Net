@@ -5,8 +5,8 @@ from pathlib import Path
 hyper_parameters_dict = {
 "grid_sizes" : [129],
 "batch_sizes" : [8],
-"net" : ['UNet'],
-"features" : [16],
+"net" : ['myUNet'],
+"features" : [8],
 "data_type": ['BigOne'],
 "boundary_type":['D', 'N'],
 "numerical_method":['fv', 'fd'],
