@@ -525,7 +525,11 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
     dc['logger'] = TensorBoardLogger('../lightning_logs/', exp_name)
     dc['name'] = exp_name
 
-    h = (2*500)/(gridSize-1) if 'big' in data_type else 2/(gridSize-1)
+    if numerical_method == 'fd':
+        h = (2*500)/(gridSize-1) if 'big' in data_type else 2/(gridSize-1)
+    elif numerical_method == 'fv':
+        h = (2*500)/gridSize if 'big' in data_type else 2/gridSize
+        
     dc['pl_model'] = LAModel(model, h, data_path, lr, numerical_method, backward_type, boundary_type, cg_max_iter=gridSize//2)
     dc['pl_dataModule'] = LADataModule(data_path, batch_size, numerical_method)
     dc['check_point'] = ModelCheckpoint(monitor= f'val_{backward_type}', mode='min', every_n_train_steps=0,
@@ -614,8 +618,9 @@ def generate_data(four, dir, a=1, minQ=1, maxQ=2, n=130, train_N=2500, val_N=10,
     np.save(dir+'fd_B.npy', np.array(B))
     del B, valB 
 
+    # FVM   
+    h = (2*a)/n
     l, r = -a + h/2, a - h/2
-    
     x = np.linspace(l, r, n)
     y = np.linspace(l, r, n)
     xx, yy = np.meshgrid(x, y)
