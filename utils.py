@@ -517,7 +517,7 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
     data_path = f'../data/{data_type}{gridSize}/'
     if ckpt:
         exp_name = 'resume_' + exp_name
-    layers = list(2**i for i in range(int(np.log2(gridSize))))
+    layers = list(2**i for i in range(int(np.log2(gridSize)) - 2))
     model = model_names[net](layers=layers, features=features, boundary_type=boundary_type, 
                         numerical_method=numerical_method)
     dc = {'max_epochs': max_epochs, 'precision': 32, 'check_val_every_n_epoch': 1, 
@@ -579,30 +579,32 @@ def main(kwargs):
     torch.cuda.empty_cache()
     return True
 
-def generate_data(four, dir, a=1, minQ=1, maxQ=2, n=130, train_N=2500, val_N=10, ax=0):
-    p = Path(dir)
-    if not p.is_dir():
-        p.mkdir(exist_ok=False)
+def _getXsFVM_fs(xs, ys, n, a, q=1):
+    h = (2*a)/n
+    l = -a + h/2
+    fs = []
+    for point in zip(xs, ys):
+        idx = int((point[0] - l) // h)
+        idy = int((point[1] - l) // h)
+        f = np.zeros((n, n))
+        f[idx, idy] = q
+        fs.append(f)
+    return fs
 
-    seed(1)
-    train_Qs = [uniform(minQ, maxQ) for _ in range(train_N)]
-    val_Qs = np.linspace(minQ, maxQ, val_N)
+def _getQsFVM_fs(n, a, Qs, locs=[[0, 0]]):
+    h = (2*a)/n
+    l = -a + h/2
+    fs = []
+    for q in Qs:
+        f = np.zeros((n, n))
+        for point in locs:
+            idx = int((point[0] - l) // h)
+            idy = int((point[1] - l) // h)
+            f[idx, idy] = q
+        fs.append(f)
+    return fs
 
-    h = (2*a)/(n-1)
-    x = np.linspace(-a, a, n)
-    y = np.linspace(-a, a, n)
-    xx, yy = np.meshgrid(x, y)
-
-    func_fd = normal(xx, yy, h) if not four else normal_fourth(xx, yy, h)
-
-    F_fd = np.array(
-        list(np.stack([xx, yy, q * func_fd], axis=ax) for q in train_Qs))
-    valF_fd = np.array(
-        list(np.stack([xx, yy, q * func_fd], axis=ax) for q in val_Qs))
-    np.save(dir+'fd_F.npy', F_fd)
-    np.save(dir+'fd_ValF.npy', valF_fd)
-    del F_fd, valF_fd
-
+def _getMatrix(dir, n):
     Ad = -fd_A_with_bc(n)
     sparse.save_npz(dir+'fd_AD', Ad)
     del Ad
@@ -611,36 +613,6 @@ def generate_data(four, dir, a=1, minQ=1, maxQ=2, n=130, train_N=2500, val_N=10,
     sparse.save_npz(dir+'fd_AN', An)
     del An
 
-    b = fd_b_bc(func_fd, h)
-    B = np.array(list(b * q for q in train_Qs))
-    valB = np.array(list(b * q for q in val_Qs))
-    np.save(dir+'fd_ValB.npy', np.array(valB))
-    np.save(dir+'fd_B.npy', np.array(B))
-    del B, valB 
-
-    # FVM   
-    h = (2*a)/n
-    l, r = -a + h/2, a - h/2
-    x = np.linspace(l, r, n)
-    y = np.linspace(l, r, n)
-    xx, yy = np.meshgrid(x, y)
-    func_fv = np.zeros_like(xx)
-    if not four:
-        idx = int(-l//h) + 1
-        func_fv[idx, idx] += 1
-    else:
-        idx = int((-a/2 - l)//h) + 1
-        idy = int(( a/2 - l)//h) + 1
-        func_fv[idx, idx] = func_fv[idx, idy] = func_fv[idy, idx] = func_fv[idy, idy] = 1
-
-    F_fv = np.array(
-        list(np.stack([xx, yy, q * func_fv], axis=ax) for q in train_Qs))
-    valF_fv = np.array(
-        list(np.stack([xx, yy, q * func_fv], axis=ax) for q in val_Qs))
-    np.save(dir+'fv_F.npy', F_fv)
-    np.save(dir+'fv_ValF.npy', valF_fv)
-    del F_fv, valF_fv
-
     Ad = fv_A_dirichlet(n)
     sparse.save_npz(dir+'fv_AD', Ad)
     del Ad
@@ -648,14 +620,104 @@ def generate_data(four, dir, a=1, minQ=1, maxQ=2, n=130, train_N=2500, val_N=10,
     An = fv_A_neu(n)
     sparse.save_npz(dir+'fv_AN', An)
     del An
+    return True
 
-    b = func_fv.flatten()
-    B = np.array(list(b * q for q in train_Qs))
-    valB = np.array(list(b * q for q in val_Qs))
-    np.save(dir+'fv_ValB.npy', np.array(valB))
-    np.save(dir+'fv_B.npy', np.array(B))
-    del B, valB
+def _getFdata(dir, a, n, fs, valfs,numerical_method='fd'):
+    if numerical_method == 'fd':
+        x = np.linspace(-a, a, n)
+        y = np.linspace(-a, a, n)
+        xx, yy = np.meshgrid(x, y)
+    elif numerical_method == 'fv':
+        h = (2*a)/n
+        l, r = -a + h/2, a - h/2
+        x = np.linspace(l, r, n)
+        y = np.linspace(l, r, n)
+        xx, yy = np.meshgrid(x, y)
 
+    F = list(np.stack([xx, yy, f], axis=0) for f in fs)
+    ValF = list(np.stack([xx, yy, f], axis=0) for f in valfs)
+    np.save(f'{dir}{numerical_method}_F.npy', F)
+    np.save(f'{dir}{numerical_method}_ValF.npy', ValF)
+    del F, ValF
+    return True
+
+def _getBdata(dir, a, n, fs, valfs, numerical_method='fd'):
+    if numerical_method == 'fd':
+        h = 2*a/(n-1)
+        B = list(fd_b_bc(f, h) for f in fs)
+        ValB = list(fd_b_bc(f, h) for f in valfs)
+
+    elif numerical_method == 'fv':
+        B = np.array(fs).reshape(-1, n*n)
+        ValB = np.array(valfs).reshape(-1, n*n)
+    np.save(f'{dir}{numerical_method}_B.npy', B)
+    np.save(f'{dir}{numerical_method}_ValB.npy', ValB)
+    del B, ValB
+    return True
+
+def genLocsData(dir, a=1, Q=1, n=129, train_N=1000, val_N=100):
+    p = Path(dir)
+    if not p.is_dir():
+        p.mkdir(exist_ok=False)
+    _getMatrix(dir, n)
+
+    h = 2*a/(n-1)
+    x = np.linspace(-a, a, n)
+    y = np.linspace(-a, a, n)
+    xx, yy = np.meshgrid(x, y)
+
+    train_xs = np.random.uniform(-a+3*h, a-3*h, train_N)
+    train_ys = np.random.uniform(-a+3*h, a-3*h, train_N)
+
+    val_xs = np.random.uniform(-a+3*h, a-3*h, val_N)
+    val_ys = np.random.uniform(-a+3*h, a-3*h, val_N)
+
+
+    fd_train_fs = list(normal(xx, yy, h, point) \
+        for point in zip(train_xs, train_ys))
+    fd_val_fs = list(normal(xx, yy, h, point) \
+        for point in zip(val_xs, val_ys))
+    _getFdata(dir, a, n, fd_train_fs, fd_val_fs, 'fd')
+    _getBdata(dir, a, n, fd_train_fs, fd_val_fs, 'fd')
+
+
+    fv_train_fs = _getXsFVM_fs(train_xs, train_ys, n, a, Q)
+    fv_val_fs = _getXsFVM_fs(val_xs, val_ys, n, a, Q)
+    _getFdata(dir, a, n, fv_train_fs, fv_val_fs, 'fv')
+    _getBdata(dir, a, n, fv_train_fs, fv_val_fs, 'fv')
+
+    return True
+
+def genQsData(dir, a=1, minQ=1, maxQ=2, n=130, train_N=2500, val_N=10, four=False):
+    p = Path(dir)
+    if not p.is_dir():
+        p.mkdir(exist_ok=False) 
+
+    _getMatrix(dir, n)
+
+    train_Qs = [uniform(minQ, maxQ) for _ in range(train_N)]
+    val_Qs = np.linspace(minQ, maxQ, val_N)
+
+    h = (2*a)/(n-1)
+    x = np.linspace(-a, a, n)
+    y = np.linspace(-a, a, n)
+    xx, yy = np.meshgrid(x, y)
+
+    fd_train_fs = list(q * normal(xx, yy, h) for q in train_Qs) \
+        if not four else list(q * normal_fourth(xx, yy, h) for q in train_Qs)
+    fd_val_fs = list(q * normal(xx, yy, h) for q in val_Qs) \
+        if not four else list(q * normal_fourth(xx, yy, h) for q in val_Qs)
+    _getFdata(dir, a, n, fd_train_fs, fd_val_fs, 'fd')
+    _getBdata(dir, a, n, fd_train_fs, fd_val_fs, 'fd')
+
+    # FVM   
+    fv_train_fs = _getQsFVM_fs(n, a, train_Qs, [[0, 0]]) \
+        if not four else _getQsFVM_fs(n, a, train_Qs, [[a/2, a/2], [a/2, -a/2], [-a/2, a/2], [-a/2, -a/2]])
+
+    fv_val_fs = _getQsFVM_fs(n, a, val_Qs, [[0, 0]]) \
+        if not four else _getQsFVM_fs(n, a, val_Qs, [[a/2, a/2], [a/2, -a/2], [-a/2, a/2], [-a/2, -a/2]])
+    _getFdata(dir, a, n, fv_train_fs, fv_val_fs, 'fv')
+    _getBdata(dir, a, n, fv_train_fs, fv_val_fs, 'fv')    
     return True
 
 def gen_test_data(Qs, n, f, a=1, order=2, g=0, path='./data/test/'):
@@ -681,8 +743,5 @@ if __name__ == '__main__':
     # yitas = [yita11_2d, yita12_2d, yita22_2d, yita23_2d, yita25_2d, yita2cos_2d]
     Ns = [129]
     for n in Ns:
-        # generate_data(f'../data/One{n}/', a=1, minQ=1, maxQ=2, n=n, train_N=1000, val_N=10)
-        # generate_data(, f'../data/Four{n}/', a=1, minQ=1, maxQ=2, n=n, train_N=1000, val_N=10)
-
-        generate_data(False, f'../data/BigOne{n}/', a=500, minQ=10000, maxQ=20000, n=n, train_N=2000, val_N=20)
-        generate_data(True, f'../data/BigFour{n}/', a=500, minQ=10000, maxQ=20000, n=n, train_N=2000, val_N=20)
+        # genLocsData(f'../data/Locs{n}/', a=1, Q=1, n=n, train_N=1000, val_N=100)
+        genQsData(f'../data/BigFour{n}/', a=500, minQ=10000, maxQ=20000, n=n, train_N=2000, val_N=20, four=True)

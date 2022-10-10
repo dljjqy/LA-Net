@@ -150,33 +150,6 @@ class UNet(nn.Module):
         y = self.final(y)
         return y
 
-
-# class Encoder(nn.Module):
-#     def __init__(self, in_c, hide_c):
-#         super().__init__()
-#         channels = [in_c] + hide_c
-#         self.dconvs = nn.ModuleList([DoubleConv(channels[i], channels[i+1])] \
-#                 for i in range(len(channels) - 1))
-#         self.pool = nn.MaxPool2d(2)
-
-#     def forward(self, x):
-#         xs = []
-#         for dconv in self.dconvs:
-#             x = dconv(x)
-#             xs.append(x)
-#             x = self.pool(x)
-#         return xs
-
-# class Decoder(nn.Module):
-#     def __init__(self, channels):
-#         super().__init__()
-#         self.channels = channels[::-1]
-#         self.ups = list(nn.ConvTranspose2d(channels[i], channels[i+1], 2, 2)\
-#                      for i in range(len(self.channels) - 2))
-#         self.ups.append()
-#         pass
-#     pass
-
 class myUNet(nn.Module):
     def __init__(self, in_c=3, out_c=1, features=8, layers=[1, 2, 4, 8, 16, 32, 64], boundary_type='D', numerical_method='fd'):
         super().__init__()
