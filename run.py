@@ -5,13 +5,13 @@ from pathlib import Path
 hyper_parameters_dict = {
 "grid_sizes" : [129],
 "batch_sizes" : [8],
-"net" : ['myUNet'],
-"features" : [8],
+"net" : ['AttUNet', 'UNet'],
+"features" : [16],
 "data_type": ['BigOne'],
-"boundary_type":['D', 'N'],
+"boundary_type":[ 'N'],
 "numerical_method":['fv', 'fd'],
 "backward_type": ['cg'], 
-"lr":[1e-3], 
+"lr":[1e-2], 
 "max_epochs":[150], 
 "ckpt":[False]}
 

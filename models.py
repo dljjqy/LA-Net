@@ -3,13 +3,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 class DoubleConv(nn.Module):
-    def __init__(self, inc, outc, padding='same'):
+    def __init__(self, inc, outc, mode='reflect'):
         super().__init__()
         layers = [
-            nn.Conv2d(in_channels=inc, out_channels=outc, kernel_size=(3, 3), stride=(1,1), padding=padding, bias=True),
+            nn.Conv2d(inc, outc, 3, 1, padding='same', padding_mode=mode,),
             nn.BatchNorm2d(outc),
             nn.ReLU(),
-            nn.Conv2d(in_channels=outc, out_channels=outc, kernel_size=(3, 3), stride=(1,1), padding='same', bias=True),
+            nn.Conv2d(outc, outc, 3, 1, padding='same', padding_mode=mode),
             nn.BatchNorm2d(outc),
             nn.ReLU()]
         self.net = nn.Sequential(*layers)
@@ -47,7 +47,7 @@ class Attention_block(nn.Module):
         return out
 
 class AttUNet(nn.Module):
-    def __init__(self, layers, in_c=3, out_c=1, features=16, boundary_type = 'D'):
+    def __init__(self, layers=None, in_c=3, out_c=1, features=16, boundary_type = 'D', numerical_method='fd'):
         super().__init__()
         self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.dconv0 = DoubleConv(in_c, features)
@@ -65,6 +65,9 @@ class AttUNet(nn.Module):
             self.final = nn.Conv2d(features, out_c, 3, 1, padding='valid')
         elif boundary_type == 'N':
             self.final = nn.Conv2d(features, out_c, 3, 1, padding=(0, 1), padding_mode='reflect')
+        if numerical_method == 'fv':
+            self.final = nn.Conv2d(features, out_c, 3, 1, padding='same', padding_mode='reflect')
+
 
         self.up4 = nn.ConvTranspose2d(features * 16, features * 8, (2, 2), (2, 2))
         self.up3 = nn.ConvTranspose2d(features * 8,  features * 4, (2, 2), (2, 2))
@@ -105,7 +108,7 @@ class AttUNet(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self, layers, in_c=3, out_c=1, features=16, boundary_type='D', numerical_method='fd'):
+    def __init__(self, layers=None, in_c=3, out_c=1, features=16, boundary_type='D', numerical_method='fd'):
         super().__init__()
         self.maxpool = nn.MaxPool2d((2, 2), (2, 2))
 
@@ -131,7 +134,7 @@ class UNet(nn.Module):
             self.final = nn.Conv2d(features, out_c, 3, 1, padding=(0, 1), padding_mode='reflect')
 
         if numerical_method == 'fv':
-            self.final = nn.Conv2d(features, out_c, 3, 1, padding='same')
+            self.final = nn.Conv2d(features, out_c, 3, 1, padding='same', padding_mode='reflect')
 
     def forward(self , x):
         x0 = self.dconv0(x)
@@ -186,7 +189,7 @@ class myUNet(nn.Module):
         elif boundary_type == 'N':
             self.final = nn.Conv2d(features, out_c, 3, 1, padding=(0, 1), padding_mode='reflect')
         if numerical_method == 'fv':
-            self.final = nn.Conv2d(features, out_c, 3, 1, padding='same')
+            self.final = nn.Conv2d(features, out_c, 3, 1, padding='same', padding_mode='reflect')
 
         self.dconvs = [DoubleConv(in_c, features)]
         self.ups = []

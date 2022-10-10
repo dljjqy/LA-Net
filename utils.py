@@ -603,11 +603,11 @@ def generate_data(four, dir, a=1, minQ=1, maxQ=2, n=130, train_N=2500, val_N=10,
     np.save(dir+'fd_ValF.npy', valF_fd)
     del F_fd, valF_fd
 
-    Ad = fd_A_with_bc(n)
+    Ad = -fd_A_with_bc(n)
     sparse.save_npz(dir+'fd_AD', Ad)
     del Ad
 
-    An = fd_A_neu(n)
+    An = -fd_A_neu(n)
     sparse.save_npz(dir+'fd_AN', An)
     del An
 
