@@ -6,7 +6,7 @@ class DoubleConv(nn.Module):
     def __init__(self, inc, outc, mode='reflect'):
         super().__init__()
         layers = [
-            nn.Conv2d(inc, outc, 3, 1, padding='same', padding_mode=mode,),
+            nn.Conv2d(inc, outc, 3, 1, padding='same', padding_mode=mode),
             nn.BatchNorm2d(outc),
             nn.ReLU(),
             nn.Conv2d(outc, outc, 3, 1, padding='same', padding_mode=mode),
