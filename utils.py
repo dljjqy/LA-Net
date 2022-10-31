@@ -525,6 +525,7 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
     dc['logger'] = TensorBoardLogger('../lightning_logs/', exp_name)
     dc['name'] = exp_name
 
+    n = gridSize
     a = 500 if 'big' in data_type else 1
     h = 2*a/(n-1) if numerical_method == 'fd' else 2*a/n
 

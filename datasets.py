@@ -13,7 +13,7 @@ class LADataset(Dataset):
             x = np.linspace(-a, a, n)
             y = np.linspace(-a, a, n)
             self.xx, self.yy = np.meshgrid(x, y)
-        elif numerical_method == 'fd':
+        elif numerical_method == 'fv':
             h = 2*a / n
             x = np.linspace(-a + h/2, a - h/2, n)
             y = np.linspace(-a + h/2, a - h/2, n)

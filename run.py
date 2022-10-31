@@ -3,12 +3,12 @@ from itertools import product
 from pathlib import Path
 
 hyper_parameters_dict = {
-"grid_sizes" : [129],
+"grid_sizes" : [257],
 "batch_sizes" : [8],
 "net" : ['AttUNet', 'UNet'],
 "features" : [16],
-"data_type": ['Locs'],
-"boundary_type":[ 'D'],
+"data_type": ['Locs', 'BigLocs', 'One', 'Four', 'BigOne', 'BigFour'],
+"boundary_type":[ 'D', 'N'],
 "numerical_method":['fv', 'fd'],
 "backward_type": ['cg'], 
 "lr":[1e-3], 
