@@ -30,7 +30,7 @@ class LADataset(Dataset):
         f = torch.from_numpy(f).to(torch.float32)
         b = torch.from_numpy(b).to(torch.float32)
         data = torch.from_numpy(data).to(torch.float32)
-        return  data, b, f
+        return  data, b, f[None, ...]
 
 class LADataModule(pl.LightningDataModule):
     

@@ -143,7 +143,6 @@ class LAModel(pl.LightningModule):
         elif boundary_type == 'N':
             self.padder = lambda x:pad_diri_bc(x, (0, 0, 1, 1), g=0)
             self.conver = neu_rhs
-        
         if numerical_method == 'fv':
             self.padder = lambda x:x
             self.conver = fv_rhs
@@ -162,13 +161,13 @@ class LAModel(pl.LightningModule):
         y = torch.flatten(self.padder(u), 1, -1)
         with torch.no_grad():
             jac = self.rhs_jac(y, b)
-            cg = self.rhs_cg(y, b)
+            cg = self.rhs_cg(y, b, self.cg_max_iters)
             conv = self.conver(u, f, self.h)
 
         loss_values = {
             'mse' : mse_loss(y, self.A, b),
             'jac' : F.l1_loss(y, jac),
-            'cg': F.l1_loss(y, cg, self.cg_max_iters),
+            'cg': F.l1_loss(y, cg),
             'energy' : energy(y, self.A, b),
             'conv': F.l1_loss(u, conv),}
         self.log_dict(loss_values)
@@ -179,13 +178,13 @@ class LAModel(pl.LightningModule):
         u = self(x)
         y = torch.flatten(self.padder(u), 1, -1)
         jac = self.rhs_jac(y, b)
-        cg = self.rhs_cg(y, b)            
+        cg = self.rhs_cg(y, b, self.cg_max_iters)            
         conv = self.conver(u, f, self.h)
 
         loss_values = {
             'val_mse' : mse_loss(y, self.A, b),
             'val_jac' : F.l1_loss(y, jac),
-            'val_cg': F.l1_loss(y, cg, self.cg_max_iters),
+            'val_cg': F.l1_loss(y, cg),
             'val_energy' : energy(y, self.A, b),
             'val_conv': F.l1_loss(u, conv)}
             

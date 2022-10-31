@@ -521,7 +521,7 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
     model = model_names[net](layers=layers, features=features, boundary_type=boundary_type, 
                         numerical_method=numerical_method)
     dc = {'max_epochs': max_epochs, 'precision': 32, 'check_val_every_n_epoch': 1, 
-                'ckpt_path': ckpt, 'mode': 'fit', 'gpus': 1}
+                'ckpt_path': ckpt, 'mode': 'fit', 'accelerator': 'gpu', 'devices': 1}
     dc['logger'] = TensorBoardLogger('../lightning_logs/', exp_name)
     dc['name'] = exp_name
 
@@ -546,7 +546,8 @@ def main(kwargs):
     pl_model = kwargs['pl_model']
     # Initilize Pytorch lightning trainer
     pl_trainer = pl.Trainer(
-        gpus=kwargs['gpus'],
+        accelerator=kwargs['accelerator'],
+        devices=kwargs['devices'],
         callbacks=kwargs['check_point'],
         max_epochs=kwargs['max_epochs'],
         precision=kwargs['precision'],
@@ -716,7 +717,7 @@ def gen_test_data(Qs, n, f, a=1, order=2, g=0, path='./data/test/'):
 
 if __name__ == '__main__':
     # yitas = [yita11_2d, yita12_2d, yita22_2d, yita23_2d, yita25_2d, yita2cos_2d]
-    Ns = [257, 513]
+    Ns = [33]
     for n in Ns:
         genLocsData(f'../data/Locs{n}/', a=1, Q=1, n=n, train_N=1000, val_N=100)
         genLocsData(f'../data/BigLocs{n}/', a=500, Q=10000, n=n, train_N=1000, val_N=100)
