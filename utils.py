@@ -1,7 +1,6 @@
-from cProfile import label
 import numpy as np
-import torch
 import pytorch_lightning as pl
+from tqdm import tqdm
 from scipy import sparse
 from scipy.sparse.linalg import spsolve
 from scipy.signal import convolve2d
@@ -12,8 +11,6 @@ from models import model_names
 from trainer import LAModel
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pathlib import Path
-from random import uniform
-from random import seed
 
 def normal(x, y, h, mean=[0, 0]):
     var = np.diag([1] * 2) * h**2
@@ -499,7 +496,8 @@ def fv_A_neu(n):
     return A
         
 def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type, 
-            numerical_method='fd', backward_type='jac', lr=1e-3, max_epochs=100, ckpt=False):
+            numerical_method='fd', backward_type='jac', lr=1e-3, max_epochs=100, ckpt=False, gpus=1,
+            dm=LADataModule, pl_model=LAModel):
     '''
     gridSize: How big mesh. 33, 65, 129
     batch_size: batch size. 8, 16, 24, 32
@@ -514,69 +512,55 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
     ckpt: True for load parameters from ckpt
     '''
     exp_name = f'{numerical_method}_{backward_type}_{gridSize}_{net}_{features}_bs{batch_size}_{data_type}{boundary_type}'
-    data_path = f'../data/{data_type}{gridSize}/'
+    data_path = f'../data/{gridSize}/{data_type}/'
+    mat_path = f'../data/{gridSize}/mat/'
     if ckpt:
         exp_name = 'resume_' + exp_name
     layers = list(2**i for i in range(int(np.log2(gridSize)) - 2))
-    model = model_names[net](layers=layers, features=features, boundary_type=boundary_type, 
-                        numerical_method=numerical_method)
-    dc = {'max_epochs': max_epochs, 'precision': 32, 'check_val_every_n_epoch': 1, 
-                'ckpt_path': ckpt, 'mode': 'fit', 'accelerator': 'gpu', 'devices': 1}
-    dc['logger'] = TensorBoardLogger('../lightning_logs/', exp_name)
+    model = model_names[net](layers=layers, features=features, boundary_type=boundary_type, numerical_method=numerical_method)
+    
+    dc = {'trainer':{}, 'pl_model':{}, 'pl_dataModule':{}}
     dc['name'] = exp_name
 
+    dc['trainer'] = {'max_epochs': max_epochs, 'precision': 32, 'check_val_every_n_epoch': 1, 'accelerator': 'gpu', 'devices': gpus}
+    dc['trainer']['logger'] = TensorBoardLogger('../lightning_logs/', exp_name)
+    dc['trainer']['callbacks'] = ModelCheckpoint(monitor= f'val_{backward_type}', mode='min', every_n_train_steps=0,
+                                        every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
+    
     n = gridSize
     a = 500 if 'big' in data_type else 1
     h = 2*a/(n-1) if numerical_method == 'fd' else 2*a/n
-
-    dc['pl_model'] = LAModel(model, h, data_path, lr, numerical_method, backward_type, boundary_type, cg_max_iter=gridSize//2)
-    dc['pl_dataModule'] = LADataModule(data_path, batch_size, a, n, numerical_method)
-    dc['check_point'] = ModelCheckpoint(monitor= f'val_{backward_type}', mode='min', every_n_train_steps=0,
-                                        every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
-    if ckpt:
-        parameters = torch.load(ckpt)
-        dc['pl_model'].load_state_dict(parameters['state_dict'])
+    dc['pl_model']['name'] = pl_model
+    dc['pl_model']['args'] = [model, h, mat_path, lr, numerical_method, backward_type, boundary_type, gridSize//2]
+    dc['pl_model']['ckpt'] = ckpt
+    
+    dc['pl_dataModule']['name'] = dm
+    dc['pl_dataModule']['args'] = [data_path, batch_size, a, n, numerical_method]
+    
     return dc
 
 def main(kwargs):
     # Initilize the Data Module
-    dm = kwargs['pl_dataModule']
+    args = kwargs['pl_dataModule']['args']
+    dm = kwargs['pl_dataModule']['name'](*args)
 
     # Initilize the model
-    pl_model = kwargs['pl_model']
+    args = kwargs['pl_model']['args']
+    pl_model = kwargs['pl_model']['name'](*args)
+    
     # Initilize Pytorch lightning trainer
-    pl_trainer = pl.Trainer(
-        accelerator=kwargs['accelerator'],
-        devices=kwargs['devices'],
-        callbacks=kwargs['check_point'],
-        max_epochs=kwargs['max_epochs'],
-        precision=kwargs['precision'],
-        check_val_every_n_epoch=kwargs['check_val_every_n_epoch'],
-        log_every_n_steps=10,
-        logger=kwargs['logger'],
-    )
-    if kwargs['mode'] == 'fit':
-        if kwargs['ckpt_path']:
-            pl_trainer.fit(
-                model=pl_model,
-                datamodule=dm,
-                ckpt_path=kwargs['ckpt_path'])
-        else:
-            pl_trainer.fit(
-                model=pl_model,
-                datamodule=dm)
-    if kwargs['mode'] == 'test':
-        if kwargs['ckpt_path']:
-            pl_trainer.test(
-                model=pl_model,
-                datamodule=dm,
-                ckpt_path=kwargs['ckpt_path'])
-        else:
-            print("No ckpt_path,CAN NOT USE UNTRAINED MODEL FOR TEST")
-            return False
+    pl_trainer = pl.Trainer(**kwargs['trainer'])
 
-    del dm, pl_model, pl_trainer
-    torch.cuda.empty_cache()
+    ckpt = kwargs['pl_model']['ckpt']
+    if ckpt:
+        pl_trainer.fit(
+            model=pl_model,
+            datamodule=dm,
+            ckpt_path=ckpt)
+    else:
+        pl_trainer.fit(
+            model=pl_model,
+            datamodule=dm)
     return True
 
 def _getXsFVM_fs(xs, ys, n, a, q=1):
@@ -594,12 +578,13 @@ def _getXsFVM_fs(xs, ys, n, a, q=1):
 def _getQsFVM_fs(n, a, Qs, locs=[[0, 0]]):
     h = (2*a)/n
     l = -a + h/2
-    f = np.zeros((n, n))
+    f = np.zeros((1, n, n))
     for point in locs:
         idx = int((point[0] - l) // h)
         idy = int((point[1] - l) // h)
-        f[idx, idy] = 1
-    return list(q * f for q in Qs)
+        f[0, idx, idy] = 1
+    
+    return Qs * f
 
 def _getMatrix(dir, n):
     Ad = -fd_A_with_bc(n)
@@ -627,21 +612,22 @@ def _getFdata(dir, fs, valfs,numerical_method='fd'):
 def _getBdata(dir, a, n, fs, valfs, numerical_method='fd'):  
     if numerical_method == 'fd':
         h = 2*a/(n-1)
-        B = np.array(fs, dtype=np.float32).reshape(-1, n**2) * h**2
-        valB = np.array(valfs, dtype=np.float32).reshape(-1, n**2) * h**2 
+        B = fs.reshape(-1, n**2) * h**2
+        valB = valfs.reshape(-1, n**2) * h**2 
+    
     elif numerical_method == 'fv':  
-        B = np.array(fs, dtype=np.float32).reshape(-1, n**2)
-        valB = np.array(valfs, dtype=np.float32).reshape(-1, n**2)  
+        B = fs.reshape(-1, n**2)
+        valB = valfs.reshape(-1, n**2)
+
     np.save(f'{dir}{numerical_method}_B.npy', B)
     np.save(f'{dir}{numerical_method}_ValB.npy', valB)
     del B, valB
     return True
 
-def genLocsData(dir, a=1, Q=1, n=129, train_N=1000, val_N=100):
+def _genLocsData(dir, a=1, Q=1, n=129, train_N=1000, val_N=100):
     p = Path(dir)
     if not p.is_dir():
         p.mkdir(exist_ok=False)
-    _getMatrix(dir, n)
     h = 2*a/(n-1)
     x = np.linspace(-a, a, n)
     y = np.linspace(-a, a, n)
@@ -656,33 +642,40 @@ def genLocsData(dir, a=1, Q=1, n=129, train_N=1000, val_N=100):
         for point in zip(train_xs, train_ys))
     fd_val_fs = list(normal(xx, yy, h, point) \
         for point in zip(val_xs, val_ys))
+    fd_train_fs = np.stack(fd_train_fs, axis=0)
+    fd_val_fs = np.stack(fd_val_fs, axis=0)
+
     _getFdata(dir, fd_train_fs, fd_val_fs, 'fd')
     _getBdata(dir, a, n, fd_train_fs, fd_val_fs, 'fd')
 
     # FVM
     fv_train_fs = _getXsFVM_fs(train_xs, train_ys, n, a, Q)
     fv_val_fs = _getXsFVM_fs(val_xs, val_ys, n, a, Q)
+    fv_train_fs = np.stack(fv_train_fs, axis=0)
+    fv_val_fs = np.stack(fv_val_fs, axis=0)
+
     _getFdata(dir, fv_train_fs, fv_val_fs, 'fv')
     _getBdata(dir, a, n, fv_train_fs, fv_val_fs, 'fv')
     return True
 
-def genQsData(dir, a=1, minQ=1, maxQ=2, n=130, train_N=2500, val_N=10, four=False):
+def _genQsData(dir, a=1, minQ=1, maxQ=2, n=130, train_N=2500, val_N=10, four=False):
     p = Path(dir)
     if not p.is_dir():
-        p.mkdir(exist_ok=False) 
-    _getMatrix(dir, n)
-    train_Qs = [uniform(minQ, maxQ) for _ in range(train_N)]
-    val_Qs = np.linspace(minQ, maxQ, val_N)
+        p.mkdir(exist_ok=False)
+
+    train_Qs = np.random.uniform(minQ, maxQ, (train_N, 1, 1))
+    val_Qs = np.linspace(minQ, maxQ, val_N).reshape((val_N, 1, 1))
 
     # FDM
     h = (2*a)/(n-1)
     x = np.linspace(-a, a, n)
     y = np.linspace(-a, a, n)
     xx, yy = np.meshgrid(x, y)
-    fd_train_fs = list(q * normal(xx, yy, h) for q in train_Qs) \
-        if not four else list(q * normal_fourth(xx, yy, h, a) for q in train_Qs)
-    fd_val_fs = list(q * normal(xx, yy, h) for q in val_Qs) \
-        if not four else list(q * normal_fourth(xx, yy, h, a) for q in val_Qs)
+    
+    fd_train_fs = train_Qs * normal(xx, yy, h) \
+        if not four else train_Qs * normal_fourth(xx, yy, h, a)
+    fd_val_fs = val_Qs * normal(xx, yy, h) \
+        if not four else val_Qs * normal_fourth(xx, yy, h, a)
     _getFdata(dir, fd_train_fs, fd_val_fs, 'fd')
     _getBdata(dir, a, n, fd_train_fs, fd_val_fs, 'fd')
 
@@ -693,8 +686,54 @@ def genQsData(dir, a=1, minQ=1, maxQ=2, n=130, train_N=2500, val_N=10, four=Fals
         if not four else _getQsFVM_fs(n, a, val_Qs, [[a/2, a/2], [a/2, -a/2], [-a/2, a/2], [-a/2, -a/2]])
     _getFdata(dir, fv_train_fs, fv_val_fs, 'fv')
     _getBdata(dir, a, n, fv_train_fs, fv_val_fs, 'fv')
-
     return True
+
+def _genData(path, n):
+    '''
+    Generate all types data and matrix.
+    '''
+    p = Path(f'{path}/{n}/')
+    if not p.is_dir(): p.mkdir()
+    with tqdm(total=100, desc=f'n={n}Generating') as pbar:
+    # Generate the linear system
+        pbar.set_description('Matrix Generating')
+        p = Path(f'{path}/{n}/mat/')
+        if not p.is_dir(): p.mkdir(exist_ok=False)
+        _getMatrix(f'{path}/{n}/mat/', n)
+        pbar.update(100/7)
+
+        pbar.set_description('Type One Generating')
+        p = f'{path}/{n}/One/'
+        _genQsData(p, 1, 1, 2, n, 2000, 10, False)
+        pbar.update(100/7)
+
+        pbar.set_description('Type Four Generating')
+        p = f'{path}/{n}/Four/'
+        _genQsData(p, 1, 1, 2, n, 2000, 10, True)
+        pbar.update(100/7)
+
+        pbar.set_description('Type BigOne Generating')
+        p = f'{path}/{n}/BigOne/'
+        _genQsData(p, 500, 10000, 15000, n, 2500, 50, False)
+        pbar.update(100/7)
+
+        pbar.set_description('Type BigFour Generating')
+        p = f'{path}/{n}/BigFour/'
+        _genQsData(p, 500, 10000, 15000, n, 2500, 50, True)
+        pbar.update(100/7)
+
+        pbar.set_description('Type Locs Generating')
+        p = f'{path}/{n}/Locs/'
+        _genLocsData(p, 1, 1, n, 2000, 100)
+        pbar.update(100/7)
+
+        pbar.set_description('Type BigLocs Generating')
+        p = f'{path}/{n}/BigLocs/'
+        _genLocsData(p, 500, 10000, n, 5000, 500)
+        pbar.update(100/7)
+    
+    return True
+
 
 def gen_test_data(Qs, n, f, a=1, order=2, g=0, path='./data/test/'):
     p = Path(path)
@@ -717,14 +756,6 @@ def gen_test_data(Qs, n, f, a=1, order=2, g=0, path='./data/test/'):
 
 if __name__ == '__main__':
     # yitas = [yita11_2d, yita12_2d, yita22_2d, yita23_2d, yita25_2d, yita2cos_2d]
-    Ns = [129]
+    Ns = [33, 69]
     for n in Ns:
-        genLocsData(f'../data/Locs{n}/', a=1, Q=1, n=n, train_N=1000, val_N=100)
-        genLocsData(f'../data/BigLocs{n}/', a=500, Q=10000, n=n, train_N=1000, val_N=100)
-        
-        genQsData(f'../data/BigFour{n}/', a=500, minQ=10000, maxQ=20000, n=n, train_N=2000, val_N=20, four=True)
-        genQsData(f'../data/BigOne{n}/', a=500, minQ=10000, maxQ=20000, n=n, train_N=2000, val_N=20, four=False)
-        genQsData(f'../data/One{n}/', a=1, minQ=1, maxQ=2, n=n, train_N=1000, val_N=10, four=False)
-        genQsData(f'../data/Four{n}/', a=1, minQ=1, maxQ=2, n=n, train_N=1000, val_N=10, four=True)
-
-
+        _genData('../data', n)

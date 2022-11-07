@@ -3,16 +3,16 @@ from itertools import product
 from pathlib import Path
 
 hyper_parameters_dict = {
-"grid_sizes" : [129],
-"batch_sizes" : [16],
+"grid_sizes" : [33],
+"batch_sizes" : [32],
 "net" : ['UNet', 'AttUNet'],
-"features" : [16, 32],
-"data_type": ['Locs', 'BigLocs', 'One', 'Four', 'BigOne', 'BigFour'],
-"boundary_type":['D', 'N'],
+"features" : [16],
+"data_type": ['Locs'],
+"boundary_type":['D'],
 "numerical_method":['fd'],
 "backward_type": ['cg'], 
 "lr":[1e-3], 
-"max_epochs":[150], 
+"max_epochs":[50], 
 "ckpt":[False]}
 
 log_dir = '../lightning_logs/'
