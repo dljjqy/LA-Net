@@ -717,7 +717,7 @@ def gen_test_data(Qs, n, f, a=1, order=2, g=0, path='./data/test/'):
 
 if __name__ == '__main__':
     # yitas = [yita11_2d, yita12_2d, yita22_2d, yita23_2d, yita25_2d, yita2cos_2d]
-    Ns = [33]
+    Ns = [129]
     for n in Ns:
         genLocsData(f'../data/Locs{n}/', a=1, Q=1, n=n, train_N=1000, val_N=100)
         genLocsData(f'../data/BigLocs{n}/', a=500, Q=10000, n=n, train_N=1000, val_N=100)
