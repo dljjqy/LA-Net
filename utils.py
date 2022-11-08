@@ -592,16 +592,10 @@ def _getJacMatrix(dir, A):
     L = sparse.tril(A, -1)
     U = sparse.triu(A, 1)
 
-    invM = linalg.inv(D.tocsc())
+    invM = sparse.diags(1/A.diagonal())
     M = L + U
     sparse.save_npz(dir+'_jac_invM', invM.tocoo())
     sparse.save_npz(dir+'_jac_M', M.tocoo())
-
-    invM = linalg.inv((L+D).tocsc())
-    M = U
-    sparse.save_npz(dir+'_gauess_invM', invM.tocoo())
-    sparse.save_npz(dir+'_gauess_M', M.tocoo())
-
     return True
 
 
