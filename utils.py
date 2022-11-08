@@ -522,7 +522,7 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
     dc = {'trainer':{}, 'pl_model':{}, 'pl_dataModule':{}}
     dc['name'] = exp_name
 
-    dc['trainer'] = {'max_epochs': max_epochs, 'precision': 32, 'check_val_every_n_epoch': 1, 'accelerator': 'gpu', 'devices': gpus}
+    dc['trainer'] = {'max_epochs': max_epochs, 'precision': 32, 'check_val_every_n_epoch': 1, 'accelerator': 'dp', 'devices': gpus}
     dc['trainer']['logger'] = TensorBoardLogger('../lightning_logs/', exp_name)
     dc['trainer']['callbacks'] = ModelCheckpoint(monitor= f'val_{backward_type}', mode='min', every_n_train_steps=0,
                                         every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
@@ -693,6 +693,7 @@ def _genData(path, n):
     Generate all types data and matrix.
     '''
     p = Path(f'{path}/{n}/')
+    m = int(100/7)
     if not p.is_dir(): p.mkdir()
     with tqdm(total=100, desc=f'n={n}Generating') as pbar:
     # Generate the linear system
@@ -700,37 +701,37 @@ def _genData(path, n):
         p = Path(f'{path}/{n}/mat/')
         if not p.is_dir(): p.mkdir(exist_ok=False)
         _getMatrix(f'{path}/{n}/mat/', n)
-        pbar.update(100/7)
+        pbar.update(m)
 
         pbar.set_description('Type One Generating')
         p = f'{path}/{n}/One/'
         _genQsData(p, 1, 1, 2, n, 2000, 10, False)
-        pbar.update(100/7)
+        pbar.update(m)
 
         pbar.set_description('Type Four Generating')
         p = f'{path}/{n}/Four/'
         _genQsData(p, 1, 1, 2, n, 2000, 10, True)
-        pbar.update(100/7)
+        pbar.update(m)
 
         pbar.set_description('Type BigOne Generating')
         p = f'{path}/{n}/BigOne/'
         _genQsData(p, 500, 10000, 15000, n, 2500, 50, False)
-        pbar.update(100/7)
+        pbar.update(m)
 
         pbar.set_description('Type BigFour Generating')
         p = f'{path}/{n}/BigFour/'
         _genQsData(p, 500, 10000, 15000, n, 2500, 50, True)
-        pbar.update(100/7)
+        pbar.update(m)
 
         pbar.set_description('Type Locs Generating')
         p = f'{path}/{n}/Locs/'
         _genLocsData(p, 1, 1, n, 2000, 100)
-        pbar.update(100/7)
+        pbar.update(m)
 
         pbar.set_description('Type BigLocs Generating')
         p = f'{path}/{n}/BigLocs/'
         _genLocsData(p, 500, 10000, n, 5000, 500)
-        pbar.update(100/7)
+        pbar.update(m)
     
     return True
 
@@ -756,6 +757,6 @@ def gen_test_data(Qs, n, f, a=1, order=2, g=0, path='./data/test/'):
 
 if __name__ == '__main__':
     # yitas = [yita11_2d, yita12_2d, yita22_2d, yita23_2d, yita25_2d, yita2cos_2d]
-    Ns = [33, 69]
+    Ns = [129, 257]
     for n in Ns:
         _genData('../data', n)

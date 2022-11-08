@@ -147,10 +147,14 @@ class LAModel(pl.LightningModule):
             self.padder = lambda x:x
             self.conver = fv_rhs
             
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.A, self.invM, self.M = np2torch(data_path, backward_type, boundary_type, numerical_method)
-        self.invM, self.M, self.A = self.invM.to(device), self.M.to(device),self.A.to(device)
-        
+        # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        A, invM, M = np2torch(data_path, backward_type, boundary_type, numerical_method)
+        # self.invM, self.M, self.A = self.invM.to(device), self.M.to(device),self.A.to(device)
+        self.register_buffer('A', A)
+        self.register_buffer('invM', invM)
+        self.register_buffer('M', M)
+
+
     def forward(self, x):
         y = self.net(x)
         return y
