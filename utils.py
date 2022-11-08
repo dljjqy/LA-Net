@@ -1,5 +1,6 @@
 import numpy as np
 import pytorch_lightning as pl
+import scipy.sparse.linalg as linalg
 from tqdm import tqdm
 from scipy import sparse
 from scipy.sparse.linalg import spsolve
@@ -522,7 +523,7 @@ def gen_hyper_dict(gridSize, batch_size, net, features, data_type, boundary_type
     dc = {'trainer':{}, 'pl_model':{}, 'pl_dataModule':{}}
     dc['name'] = exp_name
 
-    dc['trainer'] = {'max_epochs': max_epochs, 'precision': 32, 'check_val_every_n_epoch': 1, 'accelerator': 'dp', 'devices': gpus}
+    dc['trainer'] = {'max_epochs': max_epochs, 'precision': 32, 'check_val_every_n_epoch': 1, 'accelerator': 'cuda', 'devices': gpus}
     dc['trainer']['logger'] = TensorBoardLogger('../lightning_logs/', exp_name)
     dc['trainer']['callbacks'] = ModelCheckpoint(monitor= f'val_{backward_type}', mode='min', every_n_train_steps=0,
                                         every_n_epochs=1, train_time_interval=None, save_top_k=3, save_last=True,)
@@ -586,21 +587,47 @@ def _getQsFVM_fs(n, a, Qs, locs=[[0, 0]]):
     
     return Qs * f
 
+def _getJacMatrix(dir, A):
+    D = sparse.diags(A.diagonal())
+    L = sparse.tril(A, -1)
+    U = sparse.triu(A, 1)
+
+    invM = linalg.inv(D.tocsc())
+    M = L + U
+    sparse.save_npz(dir+'_jac_invM', invM.tocoo())
+    sparse.save_npz(dir+'_jac_M', M.tocoo())
+
+    invM = linalg.inv((L+D).tocsc())
+    M = U
+    sparse.save_npz(dir+'_gauess_invM', invM.tocoo())
+    sparse.save_npz(dir+'_gauess_M', M.tocoo())
+
+    return True
+
+
 def _getMatrix(dir, n):
     Ad = -fd_A_with_bc(n)
-    sparse.save_npz(dir+'fd_AD', Ad)
+    p = dir + 'fd_AD'
+    sparse.save_npz(p, Ad)
+    _getJacMatrix(p, Ad)
     del Ad
 
     An = -fd_A_neu(n)
-    sparse.save_npz(dir+'fd_AN', An)
+    p = dir + 'fd_AN'
+    sparse.save_npz(p, An)
+    _getJacMatrix(p, An)
     del An
 
     Ad = fv_A_dirichlet(n)
-    sparse.save_npz(dir+'fv_AD', Ad)
+    p = dir + 'fv_AD'
+    sparse.save_npz(p, Ad)
+    _getJacMatrix(p, Ad)
     del Ad
 
     An = fv_A_neu(n)
-    sparse.save_npz(dir+'fv_AN', An)
+    p = dir + 'fv_AN'
+    sparse.save_npz(p, An)
+    _getJacMatrix(p, An)
     del An
     return True
 
@@ -757,6 +784,6 @@ def gen_test_data(Qs, n, f, a=1, order=2, g=0, path='./data/test/'):
 
 if __name__ == '__main__':
     # yitas = [yita11_2d, yita12_2d, yita22_2d, yita23_2d, yita25_2d, yita2cos_2d]
-    Ns = [129, 257]
+    Ns = [33, 65]
     for n in Ns:
         _genData('../data', n)

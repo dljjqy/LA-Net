@@ -1,11 +1,10 @@
-from multiprocessing import reduction
-from turtle import forward
 import torch
 import pytorch_lightning as pl
 import torch.nn.functional as F
 import numpy as np
-from lbfgsnew import LBFGSNew
-from scipy import sparse
+import scipy.sparse as sparse
+import scipy.sparse.linalg as linalg
+# from lbfgsnew import LBFGSNew
 
 def coo2tensor(A):
     values = A.data
@@ -20,17 +19,13 @@ def np2torch(data_path, backward_type='jac', boundary_type='D', numerical_method
     backward_type: To identify which iterative method to use.
         Jacobian, Gauess Seidel, CG.
     '''
-    A_path = f'{data_path}{numerical_method}_A{boundary_type}.npz'
-    A = sparse.load_npz(A_path)
-    D = sparse.diags(A.diagonal())
-    L = sparse.tril(A, -1)
-    U = sparse.triu(A, 1)
-    if backward_type == 'jac' or 'mse':
-        invM = sparse.linalg.inv(D.tocsc())
-        M = L + U
-    elif backward_type == 'gauess':
-        invM = sparse.linalg.inv((L+D).tocsc())
-        M = U     
+    A_path = f'{data_path}{numerical_method}_A{boundary_type}'
+    invM_path = f'{A_path}_{backward_type}_invM.npz'
+    M_path = f'{A_path}_{backward_type}_M.npz'  
+
+    A = sparse.load_npz(A_path+'.npz')
+    invM = sparse.load_npz(invM_path)
+    M = sparse.load_npz(M_path)
     return coo2tensor(A), coo2tensor(invM.tocoo()), coo2tensor(M.tocoo())
 
 def pad_neu_bc(x, h=0, pad=(1, 1, 0, 0), g = 0):
@@ -148,7 +143,7 @@ class LAModel(pl.LightningModule):
             self.conver = fv_rhs
             
         # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        A, invM, M = np2torch(data_path, backward_type, boundary_type, numerical_method)
+        A, invM, M = np2torch(data_path, 'jac', boundary_type, numerical_method)
         # self.invM, self.M, self.A = self.invM.to(device), self.M.to(device),self.A.to(device)
         self.register_buffer('A', A)
         self.register_buffer('invM', invM)
