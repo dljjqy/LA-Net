@@ -778,6 +778,6 @@ def gen_test_data(Qs, n, f, a=1, order=2, g=0, path='./data/test/'):
 
 if __name__ == '__main__':
     # yitas = [yita11_2d, yita12_2d, yita22_2d, yita23_2d, yita25_2d, yita2cos_2d]
-    Ns = [33, 65]
+    Ns = [33, 65, 129, 257]
     for n in Ns:
         _genData('../data', n)
